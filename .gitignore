@@ -8,7 +8,6 @@
 *.srt
 /data
 /downloads
-/videos
 /output
 /outputs
 venv
