@@ -1,23 +1,38 @@
 #!/usr/bin/env python3
 """
-Gradio UI for video → (transcript + detections) → hybrid search → chat (watsonx.ai)
+Gradio UI for video → (transcript + detections) → hybrid search → chat (multi‑LLM)
++ Providers: IBM watsonx.ai • OpenAI • Anthropic
++ Optional Web Search with Exa
++ Clickable timecodes to seek the video
 
-Fixes:
-- Correctly updates Video component on scan (no tuple).
-- Chat callback signature now matches inputs (no arity warnings).
-- Lazy imports for heavy modules to avoid Paddle/Ultralytics noise on scan.
-- Reuse existing outputs: choose from outputs/<video_stem>_*; auto-build index if missing.
+Flow:
+1) Retrieve transcript context (hybrid + rerank + ±N neighbors).
+2) Ask the chosen LLM to decide if web search is needed:
+   - If NO: LLM returns final answer (uses transcript context only).
+   - If YES: LLM returns an EXACT search query string.
+3) If search needed: call Exa API → fetch results → second LLM call
+   to answer using transcript context + web snippets.
+
+Also:
+- Reuse existing outputs per video (outputs/<video_stem>_timestamp).
+- Clickable timecodes list (radio) that seeks the video player.
 
 Run:
   pip install gradio==4.* pandas numpy tqdm rank-bm25 sentence-transformers requests python-dotenv
-  python app.py
+  python app_multillm.py
+
+Notes:
+- Choose your LLM provider in the UI. Only the credentials for the selected provider are used.
+- For OpenAI, you may override the Base URL to use compatible endpoints; leave blank for api.openai.com.
+- For Anthropic, the standard Messages API endpoint is used.
 """
 
 from __future__ import annotations
 
-import re
 import os
 import sys
+import json
+import re
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 
@@ -29,6 +44,7 @@ import requests
 # ---------------------
 VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov"}
 
+
 def srt_to_seconds(s: str) -> int:
     # "HH:MM:SS,mmm" → seconds (floor)
     m = re.match(r"^(\d{2}):(\d{2}):(\d{2}),(\d{3})$", s.strip())
@@ -36,6 +52,7 @@ def srt_to_seconds(s: str) -> int:
         return 0
     hh, mm, ss, _ms = map(int, m.groups())
     return hh * 3600 + mm * 60 + ss
+
 
 def list_videos(folder: str) -> List[str]:
     p = Path(folder).expanduser()
@@ -47,11 +64,12 @@ def list_videos(folder: str) -> List[str]:
     hits.sort()
     return hits
 
+
 def safe_stem(path: Path) -> str:
-    import re
     s = path.stem.strip()
     s = re.sub(r'[^A-Za-z0-9_\-]+', '_', s)
     return s or "video"
+
 
 def find_existing_outputs_for_video(video_path: str, outputs_root: str) -> List[str]:
     """
@@ -68,6 +86,7 @@ def find_existing_outputs_for_video(video_path: str, outputs_root: str) -> List[
     matches.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     return [str(p) for p in matches]
 
+
 def latest_rag_index_dir(outputs_dir: str) -> Optional[str]:
     base = Path(outputs_dir)
     idx_dirs = [p for p in base.glob("rag_index_*") if p.is_dir()]
@@ -76,6 +95,10 @@ def latest_rag_index_dir(outputs_dir: str) -> Optional[str]:
     idx_dirs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     return str(idx_dirs[0])
 
+# ---------------------
+# Extractor / Indexer (lazy imports)
+# ---------------------
+
 def run_extractor(video_path: str, lang: str, vclass: str, fps: Optional[int],
                   device: str, batch_size: int, conf: float, iou: float, max_det: int,
                   progress=None) -> str:
@@ -83,7 +106,6 @@ def run_extractor(video_path: str, lang: str, vclass: str, fps: Optional[int],
     Returns output directory containing: transcript.srt, detections.csv, detections_by_frame.csv
     Lazy-imports heavy code; falls back to subprocess if not importable.
     """
-    # Try in-process import
     local_ok = False
     try:
         from video_audio_multitool import run_pipeline as extractor_run_pipeline  # type: ignore
@@ -92,7 +114,8 @@ def run_extractor(video_path: str, lang: str, vclass: str, fps: Optional[int],
         local_ok = False
 
     if local_ok:
-        if progress: progress(0.05, desc="Starting extractor…")
+        if progress:
+            progress(0.05, desc="Starting extractor…")
         out_dir = extractor_run_pipeline(
             input_arg=video_path, lang=lang, vclass=vclass, fps=fps,
             device_choice=device, batch_size=batch_size,
@@ -109,12 +132,14 @@ def run_extractor(video_path: str, lang: str, vclass: str, fps: Optional[int],
         ]
         if fps:
             cmd += ["--fps", str(fps)]
-        if progress: progress(0.05, desc="Starting extractor (subprocess)…")
+        if progress:
+            progress(0.05, desc="Starting extractor (subprocess)…")
         subprocess.run(cmd, check=True)
         outs = sorted((Path.cwd() / "outputs").glob("*"), key=lambda p: p.stat().st_mtime, reverse=True)
         if not outs:
             raise RuntimeError("Extractor finished but no outputs/ folder found.")
         return str(outs[0])
+
 
 def build_index_from_srt(transcript_path: str, window: int, anchor: str,
                          embed_model: str, device: Optional[str], progress=None) -> str:
@@ -134,7 +159,8 @@ def build_index_from_srt(transcript_path: str, window: int, anchor: str,
         local_ok = False
 
     if local_ok:
-        if progress: progress(0.65, desc="Building hybrid index…")
+        if progress:
+            progress(0.65, desc="Building hybrid index…")
         idx = TranscriptRAGIndex.build_from_srt(
             srt_path=srt, outdir=None, window_sec=window,
             model_name=embed_model, device=device, anchor=anchor
@@ -142,7 +168,8 @@ def build_index_from_srt(transcript_path: str, window: int, anchor: str,
         return str(idx.root)
     else:
         import subprocess
-        if progress: progress(0.65, desc="Building hybrid index (subprocess)…")
+        if progress:
+            progress(0.65, desc="Building hybrid index (subprocess)…")
         subprocess.run([
             sys.executable, "transcript_hybrid_rag.py", "build", str(srt),
             "--window", str(window), "--anchor", anchor, "--model", embed_model
@@ -152,14 +179,15 @@ def build_index_from_srt(transcript_path: str, window: int, anchor: str,
             raise RuntimeError("Index build finished but no rag_index_* folder was created.")
         return str(ridx[0])
 
+
 # Cache of loaded indexes: {index_dir: TranscriptRAGIndex}
 _INDEX_CACHE: Dict[str, object] = {}
+
 
 def load_index(index_dir: str):
     key = str(Path(index_dir).resolve())
     if key in _INDEX_CACHE:
         return _INDEX_CACHE[key]
-    # Lazy import
     try:
         from transcript_hybrid_rag import TranscriptRAGIndex  # type: ignore
         idx = TranscriptRAGIndex.load(Path(key))
@@ -172,6 +200,7 @@ def load_index(index_dir: str):
         idx = mod.TranscriptRAGIndex.load(Path(key))  # type: ignore
     _INDEX_CACHE[key] = idx
     return idx
+
 
 def compile_context_blocks(idx, query: str, top_k: int, method: str, alpha: float,
                            rerank: str, rerank_model: str, overfetch: int,
@@ -205,8 +234,9 @@ def compile_context_blocks(idx, query: str, top_k: int, method: str, alpha: floa
     full_context = "\n\n".join(blocks)
     return enriched, full_context
 
-from typing import List, Dict
-import requests
+# ---------------------
+# LLM clients (watsonx.ai, OpenAI, Anthropic)
+# ---------------------
 
 def watsonx_chat(
     base_url: str,
@@ -221,16 +251,7 @@ def watsonx_chat(
 ) -> str:
     """
     Call watsonx.ai chat endpoint with OpenAI-like inputs.
-
-    Args:
-        base_url: e.g. "https://eu-de.ml.cloud.ibm.com"
-        api_key: IBM Cloud API key
-        model: watsonx model_id (e.g. "mistralai/mistral-medium-2505")
-        project_id: your watsonx.ai project UUID
-        messages: OpenAI-style messages = [{"role": "...", "content": "..."}]
-        temperature, max_tokens, timeout, version: usual controls
-    Returns:
-        Assistant message text.
+    Returns: Assistant message text.
     """
     # 1) Exchange API key -> IAM Bearer token
     iam_resp = requests.post(
@@ -242,19 +263,16 @@ def watsonx_chat(
     iam_resp.raise_for_status()
     iam_token = iam_resp.json()["access_token"]
 
-    # 2) Convert OpenAI-style messages to watsonx chat schema
+    # 2) Convert messages to watsonx chat schema
     def _wx_content(role: str, content):
-        # watsonx requires user content as a list of parts; system can be plain string
         if isinstance(content, list):
             return content
         if role == "user":
             return [{"type": "text", "text": str(content)}]
         if role == "system":
             return str(content)
-        # assistant can be a string; keep it simple
         if role == "assistant":
             return str(content)
-        # default: wrap as text part
         return [{"type": "text", "text": str(content)}]
 
     wx_messages = [
@@ -270,15 +288,14 @@ def watsonx_chat(
         "Accept": "application/json",
     }
     payload = {
-        "model_id": model,          # note: model_id (not "model")
-        "project_id": project_id,   # required by watsonx.ai
+        "model_id": model,
+        "project_id": project_id,
         "messages": wx_messages,
-        "temperature": temperature, # top-level for chat
-        "max_tokens": max_tokens,   # top-level for chat
+        "temperature": temperature,
+        "max_tokens": max_tokens,
     }
 
     resp = requests.post(url, headers=headers, json=payload, timeout=timeout)
-    # Helpful to inspect errors from service if any:
     try:
         resp.raise_for_status()
     except requests.HTTPError as e:
@@ -290,26 +307,326 @@ def watsonx_chat(
     return data["choices"][0]["message"]["content"]
 
 
+def openai_chat(
+    api_key: str,
+    model: str,
+    messages: List[Dict],
+    base_url: Optional[str] = None,
+    temperature: float = 0.2,
+    max_tokens: int = 600,
+    timeout: int = 120,
+) -> str:
+    """Call OpenAI-compatible Chat Completions API and return assistant text."""
+    root = (base_url or "https://api.openai.com").rstrip("/")
+    url = f"{root}/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    resp = requests.post(url, headers=headers, json=payload, timeout=timeout)
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError as e:
+        raise RuntimeError(f"OpenAI error {resp.status_code}: {resp.text}") from e
+    data = resp.json()
+    return data["choices"][0]["message"]["content"]
+
+
+def _anthropic_convert_messages(messages: List[Dict]) -> Tuple[str, List[Dict]]:
+    """Split out system content and convert messages to Anthropic Messages API format."""
+    system_parts: List[str] = []
+    converted: List[Dict] = []
+
+    for m in messages:
+        role = m.get("role", "user")
+        content = m.get("content", "")
+        # Collect system content separately
+        if role == "system":
+            if isinstance(content, list):
+                # concatenate any text parts
+                txt = "\n\n".join(
+                    [p.get("text", "") for p in content if isinstance(p, dict) and p.get("type") == "text"]
+                )
+                system_parts.append(txt)
+            else:
+                system_parts.append(str(content))
+            continue
+
+        def to_text_list(c):
+            if isinstance(c, list):
+                # already a list of content blocks
+                blocks = []
+                for p in c:
+                    if isinstance(p, dict) and p.get("type") == "text":
+                        blocks.append(p)
+                    else:
+                        blocks.append({"type": "text", "text": str(p)})
+                return blocks
+            return [{"type": "text", "text": str(c)}]
+
+        if role in ("user", "assistant"):
+            converted.append({"role": role, "content": to_text_list(content)})
+        else:
+            # default to user
+            converted.append({"role": "user", "content": to_text_list(content)})
+
+    system_str = "\n\n".join([s for s in system_parts if s])
+    return system_str, converted
+
+
+def anthropic_chat(
+    api_key: str,
+    model: str,
+    messages: List[Dict],
+    temperature: float = 0.2,
+    max_tokens: int = 600,
+    timeout: int = 120,
+) -> str:
+    """Call Anthropic Messages API and return assistant text."""
+    system_str, conv = _anthropic_convert_messages(messages)
+    url = "https://api.anthropic.com/v1/messages"
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+    }
+    payload: Dict = {
+        "model": model,
+        "messages": conv,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
+    if system_str:
+        payload["system"] = system_str
+
+    resp = requests.post(url, headers=headers, json=payload, timeout=timeout)
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError as e:
+        raise RuntimeError(f"Anthropic error {resp.status_code}: {resp.text}") from e
+    data = resp.json()
+    # content is a list of blocks; return concatenated text
+    blocks = data.get("content", [])
+    text = "\n".join([b.get("text", "") for b in blocks if isinstance(b, dict)])
+    return text
+
+
+# Unified chat wrapper
+
+def llm_chat(
+    provider: str,
+    cfg: Dict,
+    messages: List[Dict],
+    temperature: float = 0.2,
+    max_tokens: int = 600,
+    timeout: int = 120,
+) -> str:
+    provider = (provider or "watsonx").lower()
+    if provider == "watsonx":
+        return watsonx_chat(
+            base_url=cfg.get("wx_base_url", ""),
+            api_key=cfg.get("wx_api_key", ""),
+            model=cfg.get("wx_model", ""),
+            project_id=cfg.get("wx_project_id", ""),
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout,
+        )
+    elif provider == "openai":
+        return openai_chat(
+            api_key=cfg.get("oa_api_key", ""),
+            model=cfg.get("oa_model", ""),
+            messages=messages,
+            base_url=cfg.get("oa_base_url") or None,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout,
+        )
+    elif provider == "anthropic":
+        return anthropic_chat(
+            api_key=cfg.get("an_api_key", ""),
+            model=cfg.get("an_model", ""),
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout,
+        )
+    else:
+        raise ValueError(f"Unknown provider: {provider}")
+
+
+# ---------------------
+# Exa web search
+# ---------------------
+
+def exa_search_with_contents(query: str, api_key: str, num_results: int = 5, timeout: int = 60) -> List[Dict]:
+    """
+    Returns list of {title, url, snippet} using Exa /search + /contents.
+    """
+    base = "https://api.exa.ai"
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
+    # 1) Search
+    sr = requests.post(
+        f"{base}/search",
+        headers=headers,
+        json={
+            "query": query,
+            "numResults": int(num_results),
+            "type": "neural",
+            "useAutoprompt": False,
+        },
+        timeout=timeout,
+    )
+    sr.raise_for_status()
+    sdata = sr.json()
+    results = sdata.get("results", []) or []
+
+    if not results:
+        return []
+
+    # 2) Contents for each result (if not already present)
+    ids = [r.get("id") for r in results if r.get("id")]
+    content_by_id: Dict[str, str] = {}
+    if ids:
+        cr = requests.post(
+            f"{base}/contents",
+            headers=headers,
+            json={"ids": ids},
+            timeout=timeout,
+        )
+        if cr.ok:
+            cdata = cr.json()
+            for item in cdata.get("results", []):
+                content_by_id[item.get("id", "")] = (item.get("text") or "").strip()
+
+    out: List[Dict] = []
+    for r in results:
+        rid = r.get("id", "")
+        title = r.get("title") or r.get("url") or "(untitled)"
+        url = r.get("url") or ""
+        text = (r.get("text") or "").strip()
+        text = text or content_by_id.get(rid, "")
+        if len(text) > 800:
+            text = text[:790].rstrip() + "…"
+        out.append({"title": title, "url": url, "snippet": text})
+    return out
+
+
+# ---------------------
+# Search decision helper
+# ---------------------
+
+def wants_web_search_explicit(user_msg: str) -> bool:
+    """
+    Heuristic to flag explicit web search intent (English + French).
+    """
+    s = (user_msg or "").lower()
+    patterns = [
+        r"\b(search|google|web|internet|online|look\s*up|check\s*online|find on the web)\b",
+        r"cherche( r)? sur (le|la|les)?\s*web|internet",
+        r"recherche en ligne",
+        r"regarde sur internet",
+        r"sur le web",
+    ]
+    return any(re.search(p, s) for p in patterns)
+
+
+def extract_json(text: str) -> Optional[Dict]:
+    """
+    Try to parse a JSON object from model output (raw or fenced).
+    """
+    if not text:
+        return None
+    m = re.search(r"```json\s*(\{.*?\})\s*```", text, flags=re.DOTALL)
+    blob = None
+    if m:
+        blob = m.group(1)
+    else:
+        m2 = re.search(r"(\{.*\})", text, flags=re.DOTALL)
+        if m2:
+            blob = m2.group(1)
+    if not blob:
+        return None
+    try:
+        return json.loads(blob)
+    except Exception:
+        return None
+
+
+def llm_decide_search(
+    provider: str,
+    cfg: Dict,
+    question: str,
+    transcript_context: str,
+    explicit_flag: bool,
+) -> Dict:
+    """
+    Ask the selected LLM to decide whether to search the web.
+    Returns dict with keys:
+      need_search: bool
+      query: str | None
+      answer: str | None
+      reason: str
+    """
+    system = (
+        "You are a retrieval QA router.\n"
+        "You are given a question and transcript context.\n"
+        "If the user explicitly asks to search the web OR the answer is not in the transcript context, "
+        "you must request a web search by returning JSON ONLY.\n"
+        "Otherwise, answer using ONLY the transcript context and return JSON ONLY.\n"
+        "JSON schema:\n"
+        '{"need_search": true|false, "query": string|null, "answer": string|null, "reason": string}'
+        "\nRules:\n"
+        "- If need_search=true: 'query' MUST be a single, precise web search string; 'answer' MUST be null.\n"
+        "- If need_search=false: 'answer' MUST contain the final answer grounded in context; 'query' MUST be null.\n"
+        "- Never include explanations outside the JSON."
+    )
+    user = (
+        f"Explicit_web_search_flag={explicit_flag}\n\n"
+        f"Question:\n{question}\n\n"
+        f"Transcript context:\n{transcript_context}\n"
+    )
+    out = llm_chat(
+        provider=provider,
+        cfg=cfg,
+        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+        temperature=0.0,
+        max_tokens=500,
+    )
+    data = extract_json(out) or {}
+    need = bool(data.get("need_search"))
+    query = (data.get("query") or "").strip() if need else None
+    answer = (data.get("answer") or "").strip() if not need else None
+    reason = (data.get("reason") or "").strip()
+    return {"need_search": need, "query": query, "answer": answer, "reason": reason}
+
+
 # ---------------------
 # Gradio callbacks
 # ---------------------
+
 def do_scan(folder):
     vids = list_videos(folder)
-    # 1) Update the dropdown of videos
     dd_update = gr.update(choices=vids, value=(vids[0] if vids else None))
-    # 2) Clear/Hide the video preview until a selection is made
     vid_update = gr.update(value=None, visible=bool(vids))
     return dd_update, vid_update
 
+
 def _on_select(video, outputs_root):
-    # Update Video player with selected file (show it)
     vp_update = gr.update(value=video, visible=True)
-    # Scan outputs for this video and update the existing outputs dropdown
     matches = find_existing_outputs_for_video(video, outputs_root)
     dd_update = gr.update(choices=matches, value=(matches[0] if matches else None))
-    # Status message
     msg = "Found existing outputs:\n" + ("\n".join(matches[:8]) if matches else "None")
     return vp_update, dd_update, msg
+
 
 def on_use_existing(selected_outputs, video_path, state_dict,
                     window, anchor, embed_model, embed_device):
@@ -343,6 +660,7 @@ def on_use_existing(selected_outputs, video_path, state_dict,
         f"- transcript: {out_dir / 'transcript.srt'}\n"
     )
     return msg, sd
+
 
 def do_generate(folder, video_path, outputs_root,
                 lang, vclass, fps, device, batch, conf, iou, max_det,
@@ -381,32 +699,92 @@ def do_generate(folder, video_path, outputs_root,
     return status, sd
 
 
+def _provider_cfg(provider,
+                  wx_base_url, wx_api_key, wx_model, wx_project_id,
+                  oa_base_url, oa_api_key, oa_model,
+                  an_api_key, an_model) -> Dict:
+    p = (provider or "watsonx").lower()
+    if p == "watsonx":
+        return {
+            "wx_base_url": (wx_base_url or "").strip(),
+            "wx_api_key": (wx_api_key or "").strip(),
+            "wx_model": (wx_model or "").strip(),
+            "wx_project_id": (wx_project_id or "").strip(),
+        }
+    elif p == "openai":
+        return {
+            "oa_base_url": (oa_base_url or "").strip(),
+            "oa_api_key": (oa_api_key or "").strip(),
+            "oa_model": (oa_model or "").strip(),
+        }
+    elif p == "anthropic":
+        return {
+            "an_api_key": (an_api_key or "").strip(),
+            "an_model": (an_model or "").strip(),
+        }
+    else:
+        return {}
+
+
+def _validate_provider_inputs(provider: str, cfg: Dict) -> Optional[str]:
+    p = (provider or "watsonx").lower()
+    if p == "watsonx":
+        if not cfg.get("wx_base_url") or not cfg.get("wx_api_key") or not cfg.get("wx_model") or not cfg.get("wx_project_id"):
+            return "Please set watsonx Base URL, API key, Model, and Project ID in the panel."
+    elif p == "openai":
+        if not cfg.get("oa_api_key") or not cfg.get("oa_model"):
+            return "Please set OpenAI API Key and Model in the panel (Base URL optional)."
+    elif p == "anthropic":
+        if not cfg.get("an_api_key") or not cfg.get("an_model"):
+            return "Please set Anthropic API Key and Model in the panel."
+    return None
+
+
 def on_chat(
     user_msg, history,
     video_path, ctx_before, ctx_after, top_k, method, alpha,
-    rerank, rerank_model, overfetch, base_url, api_key, model, embed_device, embed_model_override,
+    rerank, rerank_model, overfetch,
+    provider,  # NEW
+    wx_base_url, wx_api_key, wx_model, wx_project_id,
+    oa_base_url, oa_api_key, oa_model,
+    an_api_key, an_model,
+    embed_device, embed_model_override,
+    enable_web, exa_api_key, exa_num_results,
     state_dict
 ):
+    """
+    Generator that yields (messages, ts_radio_update, ts_map_state).
+    Chatbot(type='messages'): messages must be [{'role','content'}, ...]
+    """
     msgs = list(history or [])
 
+    # basic validations
     if not video_path:
         msgs.append({"role": "assistant", "content": "Please select a video first."})
-        return msgs, gr.update(choices=[], value=None, visible=False), {}
+        yield msgs, gr.update(choices=[], value=None, visible=False), {}
+        return
 
-    if not base_url or not api_key or not model:
-        msgs.append({"role": "assistant", "content": "Please set your Watsonx base URL, API key, and model in the right panel."})
-        return msgs, gr.update(choices=[], value=None, visible=False), {}
+    cfg = _provider_cfg(provider, wx_base_url, wx_api_key, wx_model, wx_project_id,
+                        oa_base_url, oa_api_key, oa_model,
+                        an_api_key, an_model)
+    err = _validate_provider_inputs(provider, cfg)
+    if err:
+        msgs.append({"role": "assistant", "content": err})
+        yield msgs, gr.update(choices=[], value=None, visible=False), {}
+        return
 
     rec = (state_dict or {}).get(str(video_path))
     if not rec:
         msgs.append({"role": "assistant", "content": "No outputs mapped for this video. Click 'Use selected outputs' or 'Generate'."})
-        return msgs, gr.update(choices=[], value=None, visible=False), {}
+        yield msgs, gr.update(choices=[], value=None, visible=False), {}
+        return
 
+    # show user message
     msgs.append({"role": "user", "content": str(user_msg)})
 
+    # 1) Retrieval
     idx_dir = rec["index_dir"]
     idx = load_index(idx_dir)
-
     hits, ctx_text = compile_context_blocks(
         idx=idx, query=str(user_msg), top_k=int(top_k), method=method, alpha=float(alpha),
         rerank=rerank, rerank_model=rerank_model, overfetch=int(overfetch),
@@ -415,34 +793,10 @@ def on_chat(
         embed_model_override=(None if not embed_model_override else embed_model_override)
     )
 
-    system = (
-        "Tu es un assistant qui répond uniquement à partir du transcript du match.\n"
-        "Cite les timecodes [HH:MM:SS,mmm–HH:MM:SS,mmm] pertinents.\n"
-        "Si l'information n'est pas dans le contexte, dis-le honnêtement."
-    )
-    retrieval_blob = f"Contexte (extraits du transcript):\n\n{ctx_text}"
-    user_with_ctx = f"Question:\n{user_msg}\n\n{retrieval_blob}"
-
-    llm_messages = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user_with_ctx},
-    ]
-
-    try:
-        answer = watsonx_chat(
-            base_url=base_url, api_key=api_key, model=model, project_id="9917d93b-b2f9-4049-8dd9-d8772fc37cae",
-            messages=llm_messages, temperature=0.2, max_tokens=700
-        )
-    except Exception as e:
-        answer = f"LLM error: {e}"
-
-    msgs.append({"role": "assistant", "content": answer})
-
-    # Build a clickable list of main passages (start–end + short snippet)
+    # Prepare timecode radio options now (from hits), to return with any yield
     labels = []
     label_to_start = {}
     for h in hits:
-        # choose the main line (offset==0) if present
         ctx_sorted = sorted(h["context"], key=lambda c: (c["offset"] != 0, c["offset"]))
         main = next((c for c in ctx_sorted if c.get("offset", 0) == 0), ctx_sorted[0])
         start_srt = main.get("start_srt", h.get("start_srt", "00:00:00,000"))
@@ -454,26 +808,125 @@ def on_chat(
         labels.append(label)
         label_to_start[label] = srt_to_seconds(start_srt)
 
-    radio_update = gr.update(
-        choices=labels,
-        value=None,
-        visible=bool(labels)
+    radio_update = gr.update(choices=labels, value=None, visible=bool(labels))
+
+    # 2) Ask LLM to decide about web search
+    explicit_flag = wants_web_search_explicit(str(user_msg))
+    try:
+        decision = llm_decide_search(
+            provider=(provider or "watsonx"),
+            cfg=cfg,
+            question=str(user_msg), transcript_context=ctx_text,
+            explicit_flag=explicit_flag
+        )
+    except Exception as e:
+        msgs.append({"role": "assistant", "content": f"Routing error: {e}"})
+        yield msgs, radio_update, label_to_start
+        return
+
+    need_search = bool(decision.get("need_search"))
+    search_query = decision.get("query")
+    direct_answer = decision.get("answer")
+
+    if not need_search:
+        # LLM already answered using transcript context
+        if not direct_answer:
+            direct_answer = "Je n'ai pas trouvé d'information suffisante dans le transcript pour répondre."
+        msgs.append({"role": "assistant", "content": direct_answer})
+        yield msgs, radio_update, label_to_start
+        return
+
+    # need_search = True → we expect an exact search query
+    if not search_query:
+        msgs.append({"role": "assistant", "content": "La recherche web a été suggérée, mais aucune requête n'a été fournie."})
+        yield msgs, radio_update, label_to_start
+        return
+
+    if not enable_web:
+        msgs.append({"role": "assistant", "content": f"🔎 Requête web suggérée : \"{search_query}\" (la recherche web est désactivée)."})
+        yield msgs, radio_update, label_to_start
+        return
+
+    if not exa_api_key:
+        msgs.append({"role": "assistant", "content": f"🔎 Requête web suggérée : \"{search_query}\" (ajoutez une clé Exa pour effectuer la recherche)."})
+        yield msgs, radio_update, label_to_start
+        return
+
+    # Show interim "searching" message
+    msgs.append({"role": "assistant", "content": f"🔎 Web search query: \"{search_query}\" (running Exa…)"})
+    yield msgs, radio_update, label_to_start
+
+    # 3) Exa search
+    try:
+        web_hits = exa_search_with_contents(search_query, exa_api_key, num_results=int(exa_num_results))
+    except Exception as e:
+        msgs.append({"role": "assistant", "content": f"Exa search failed: {e}"})
+        yield msgs, radio_update, label_to_start
+        return
+
+    if not web_hits:
+        msgs.append({"role": "assistant", "content": "Aucun résultat web pertinent n'a été trouvé."})
+        yield msgs, radio_update, label_to_start
+        return
+
+    # Build web context blob
+    web_blocks = []
+    for i, w in enumerate(web_hits, start=1):
+        block = f"[{i}] {w['title']}  {w['url']}\n{w['snippet']}"
+        web_blocks.append(block)
+    web_context = "\n\n".join(web_blocks)
+
+    # 4) Final LLM call with transcript + web context
+    system = (
+        "Tu es un assistant qui répond en combinant:\n"
+        "1) le transcript du match (fiable pour les propos entendus/timestamps)\n"
+        "2) des extraits web (fiables pour faits externes).\n"
+        "Indique les timecodes du transcript quand utiles.\n"
+        "Quand tu t'appuies sur le web, cite les sources avec leurs numéros [1], [2], etc."
+    )
+    user_full = (
+        f"Question:\n{user_msg}\n\n"
+        f"Transcript context:\n{ctx_text}\n\n"
+        f"Web results:\n{web_context}"
     )
 
-    # Yield full triple: messages, radio choices update, and label->start map
-    return msgs, radio_update, label_to_start
+    try:
+        final_answer = llm_chat(
+            provider=(provider or "watsonx"),
+            cfg=cfg,
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": user_full}],
+            temperature=0.2,
+            max_tokens=900,
+        )
+    except Exception as e:
+        final_answer = f"LLM error (final): {e}"
 
+    msgs.append({"role": "assistant", "content": final_answer})
+    yield msgs, radio_update, label_to_start
+
+
+# ---------------------
+# Helper: toggle provider panels visibility
+# ---------------------
+
+def toggle_provider_panels(provider: str):
+    p = (provider or "").lower()
+    return (
+        gr.update(visible=(p == "watsonx")),
+        gr.update(visible=(p == "openai")),
+        gr.update(visible=(p == "anthropic")),
+    )
 
 # ---------------------
 # Gradio Layout
 # ---------------------
-with gr.Blocks(title="Video RAG Chat (Gradio + watsonx.ai)", fill_height=True) as demo:
-    gr.Markdown("## 🎬 Video RAG Chat\nScan a folder → select a video → reuse **existing outputs** or **Generate** new → chat with the content.")
+with gr.Blocks(title="Video RAG Chat (Gradio + Multi‑LLM + Exa)", fill_height=True) as demo:
+    gr.Markdown("## 🎬 Video RAG Chat\nScan → select video → reuse **existing outputs** or **Generate** → chat with transcript.\nOptional: let the assistant trigger **web search** via Exa when needed.\n\n**LLM Providers:** IBM watsonx.ai • OpenAI • Anthropic")
 
     with gr.Row():
         with gr.Column(scale=3):
             folder_tb = gr.Textbox(label="Folder to scan for videos", value=str(Path.cwd() / "videos"))
-            outputs_root_tb = gr.Textbox(label="Outputs folder (where processed runs are stored)", value=str(Path.cwd() / "outputs"))
+            outputs_root_tb = gr.Textbox(label="Outputs folder", value=str(Path.cwd() / "outputs"))
             scan_btn = gr.Button("Scan videos")
 
             video_dd = gr.Dropdown(choices=[], label="Select a video")
@@ -499,6 +952,11 @@ with gr.Blocks(title="Video RAG Chat (Gradio + watsonx.ai)", fill_height=True) a
                 embed_model_tb = gr.Textbox(value="sentence-transformers/all-MiniLM-L6-v2", label="Embedding model")
                 embed_device_dd = gr.Dropdown(choices=["auto","cpu","cuda"], value="auto", label="Embed device")
 
+            with gr.Accordion("Web Search (Exa)", open=False):
+                enable_web_chk = gr.Checkbox(value=False, label="Enable web search with Exa")
+                exa_key_tb = gr.Textbox(label="Exa API Key", type="password")
+                exa_num_tb = gr.Slider(1, 12, 5, step=1, label="Exa: number of results")
+
             generate_btn = gr.Button("🧪 Generate (transcript + detections + index)", variant="primary")
 
         with gr.Column(scale=4):
@@ -515,10 +973,26 @@ with gr.Blocks(title="Video RAG Chat (Gradio + watsonx.ai)", fill_height=True) a
                     embed_model_override_tb = gr.Textbox(value="", label="Override embed model at query time (optional)")
                     embed_device_q_dd = gr.Dropdown(choices=["auto","cpu","cuda"], value="auto", label="Embed device (query)")
 
-                with gr.Accordion("watsonx.ai connection", open=True):
-                    base_url_tb = gr.Textbox(label="OpenAI-compatible Base URL (watsonx.ai Model Gateway or proxy)", placeholder="https://<your-gateway>")
-                    api_key_tb = gr.Textbox(label="API Key", type="password")
-                    model_tb = gr.Textbox(label="Model name", placeholder="ibm/granite-13b-chat-v2")
+                with gr.Accordion("LLM Provider & connection", open=True):
+                    provider_dd = gr.Dropdown(choices=["watsonx","openai","anthropic"], value="watsonx", label="Provider")
+
+                    with gr.Group(visible=True) as wx_group:
+                        gr.Markdown("#### watsonx.ai")
+                        base_url_tb = gr.Textbox(label="watsonx.ai Base URL", placeholder="https://eu-de.ml.cloud.ibm.com")
+                        api_key_tb = gr.Textbox(label="IBM Cloud API Key", type="password")
+                        model_tb = gr.Textbox(label="Model ID", placeholder="ibm/granite-13b-chat-v2")
+                        project_tb = gr.Textbox(label="Project ID (UUID)", placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx")
+
+                    with gr.Group(visible=False) as oa_group:
+                        gr.Markdown("#### OpenAI (Chat Completions)")
+                        oa_base_url_tb = gr.Textbox(label="OpenAI Base URL (optional)", placeholder="https://api.openai.com")
+                        oa_api_key_tb = gr.Textbox(label="OpenAI API Key", type="password")
+                        oa_model_tb = gr.Textbox(label="OpenAI Model", placeholder="gpt-4o-mini or gpt-4o")
+
+                    with gr.Group(visible=False) as an_group:
+                        gr.Markdown("#### Anthropic (Messages API)")
+                        an_api_key_tb = gr.Textbox(label="Anthropic API Key", type="password")
+                        an_model_tb = gr.Textbox(label="Anthropic Model", placeholder="claude-3.5-sonnet")
 
                 ts_radio = gr.Radio(choices=[], label="Timecodes (click to seek)", interactive=True, visible=False)
                 ts_map_state = gr.State({})  # label -> start_seconds
@@ -529,17 +1003,15 @@ with gr.Blocks(title="Video RAG Chat (Gradio + watsonx.ai)", fill_height=True) a
 
             state_dict = gr.State({})
 
-
+    # Wiring
     scan_btn.click(fn=do_scan, inputs=[folder_tb], outputs=[video_dd, video_player])
-
     video_dd.change(fn=_on_select, inputs=[video_dd, outputs_root_tb], outputs=[video_player, existing_outputs_dd, status_box])
+
+    provider_dd.change(toggle_provider_panels, inputs=[provider_dd], outputs=[wx_group, oa_group, an_group])
 
     use_existing_btn.click(
         fn=on_use_existing,
-        inputs=[
-            existing_outputs_dd, video_dd, state_dict,
-            window_tb, anchor_dd, embed_model_tb, embed_device_dd
-        ],
+        inputs=[existing_outputs_dd, video_dd, state_dict, window_tb, anchor_dd, embed_model_tb, embed_device_dd],
         outputs=[status_box, state_dict]
     )
 
@@ -553,18 +1025,17 @@ with gr.Blocks(title="Video RAG Chat (Gradio + watsonx.ai)", fill_height=True) a
         outputs=[status_box, state_dict]
     )
 
-    # Wiring
+    # Click a timecode → seek the video (JS)
     ts_radio.change(
         inputs=[ts_radio, ts_map_state],
-        outputs=[status_box],   # <— TEMP: show debug info; remove later if you want
+        outputs=[status_box],   # debug info; remove if you don't want logs
         js="""
         (label, map) => {
         const logs = [];
         logs.push(`label: ${label}`);
 
-        // --- get seconds from state or parse from label ---
         const parseFromLabel = (lbl) => {
-            const m = /\\b(\\d{2}):(\\d{2}):(\\d{2}),(\\d{3})\\b/.exec(lbl || "");
+            const m = /\b(\d{2}):(\d{2}):(\d{2}),(\d{3})\b/.exec(lbl || "");
             if (!m) return NaN;
             const hh = +m[1], mm = +m[2], ss = +m[3];
             return hh*3600 + mm*60 + ss;
@@ -573,84 +1044,87 @@ with gr.Blocks(title="Video RAG Chat (Gradio + watsonx.ai)", fill_height=True) a
         logs.push(`seconds: ${seconds}`);
         if (!Number.isFinite(seconds)) return `Bad seconds from label/map`;
 
-        // --- find the <video> element (works with shadow DOM) ---
         const host = document.querySelector("#video_preview");
         logs.push(`host found: ${!!host}`);
 
         const tryFindVideo = (root) => {
             if (!root) return null;
-            // 1) direct video under root
             let v = root.querySelector ? root.querySelector("video") : null;
             if (v) return v;
-            // 2) explicit <gradio-video> child
             const gv = root.querySelector ? root.querySelector("gradio-video") : null;
             if (gv && gv.shadowRoot) {
-            v = gv.shadowRoot.querySelector("video");
-            if (v) return v;
+                v = gv.shadowRoot.querySelector("video");
+                if (v) return v;
             }
-            // 3) search any child shadow roots for a video
             const all = root.querySelectorAll ? root.querySelectorAll("*") : [];
             for (const el of all) {
-            if (el.shadowRoot) {
-                const vv = el.shadowRoot.querySelector("video");
-                if (vv) return vv;
-            }
+                if (el.shadowRoot) {
+                    const vv = el.shadowRoot.querySelector("video");
+                    if (vv) return vv;
+                }
             }
             return null;
         };
 
         let video = tryFindVideo(host);
         if (!video) {
-            // last resort: look globally
             const gvAll = Array.from(document.querySelectorAll("gradio-video"));
             for (const gv of gvAll) {
-            if (gv.shadowRoot) {
-                const v2 = gv.shadowRoot.querySelector("video");
-                if (v2) { video = v2; break; }
-            }
+                if (gv.shadowRoot) {
+                    const v2 = gv.shadowRoot.querySelector("video");
+                    if (v2) { video = v2; break; }
+                }
             }
         }
         logs.push(`video found: ${!!video}`);
         if (!video) return `No <video> element found`;
 
-        // --- seek ---
         const seek = () => {
             try {
-            // clamp just in case
-            const dur = Number.isFinite(video.duration) ? video.duration : Infinity;
-            const t = Math.max(0, Math.min(dur, seconds));
-            video.currentTime = t;
-            // try to play (user gesture should allow it)
-            if (video.paused) { video.play().catch(()=>{}); }
-            logs.push(`seeked to ${t}s`);
+                const dur = Number.isFinite(video.duration) ? video.duration : Infinity;
+                const t = Math.max(0, Math.min(dur, seconds));
+                video.currentTime = t;
+                if (video.paused) { video.play().catch(()=>{}); }
+                logs.push(`seeked to ${t}s`);
             } catch (e) {
-            logs.push(`seek error: ${e}`);
+                logs.push(`seek error: ${e}`);
             }
         };
 
         if (video.readyState >= 1) seek();
         else video.addEventListener("loadedmetadata", seek, { once: true });
 
-        return logs.join("\\n");
+        return logs.join("\n");
         }
         """
     )
 
-
-    # IMPORTANT: function signature matches inputs count
+    # Chat callback (messages + timecode radio)
     def _chat_send(
         user_msg, chat_history,
         video_path, ctx_before, ctx_after, top_k, method, alpha,
         rerank, rerank_model, overfetch,
-        base_url, api_key, model, embed_device, embed_model_override,
+        provider,
+        wx_base_url, wx_api_key, wx_model, wx_project_id,
+        oa_base_url, oa_api_key, oa_model,
+        an_api_key, an_model,
+        embed_device, embed_model_override,
+        enable_web, exa_api_key, exa_num_results,
         state_dict
     ):
-        return on_chat(
+        for out in on_chat(
             user_msg, chat_history,
             video_path, ctx_before, ctx_after, top_k, method, alpha,
-            rerank, rerank_model, overfetch, base_url, api_key, model, embed_device, embed_model_override,
+            rerank, rerank_model, overfetch,
+            provider,
+            wx_base_url, wx_api_key, wx_model, wx_project_id,
+            oa_base_url, oa_api_key, oa_model,
+            an_api_key, an_model,
+            embed_device, embed_model_override,
+            enable_web, exa_api_key, exa_num_results,
             state_dict
-        )
+        ):
+            yield out
 
     send_btn.click(
         _chat_send,
@@ -658,26 +1132,21 @@ with gr.Blocks(title="Video RAG Chat (Gradio + watsonx.ai)", fill_height=True) a
             chat_tb, chat,
             video_dd, ctx_before_tb, ctx_after_tb, topk_tb, method_dd, alpha_tb,
             rerank_dd, rerank_model_tb, overfetch_tb,
-            base_url_tb, api_key_tb, model_tb,
+            provider_dd,
+            base_url_tb, api_key_tb, model_tb, project_tb,
+            oa_base_url_tb, oa_api_key_tb, oa_model_tb,
+            an_api_key_tb, an_model_tb,
             embed_device_q_dd, embed_model_override_tb,
+            enable_web_chk, exa_key_tb, exa_num_tb,
             state_dict
         ],
         outputs=[chat, ts_radio, ts_map_state]
     ).then(lambda: "", None, [chat_tb])
 
-
-# if __name__ == "__main__":
-#     demo.queue(max_size=32).launch(
-#         server_name="0.0.0.0",
-#         server_port=int(os.getenv("PORT", "7860")),
-#         show_error=True
-#     )
-
 if __name__ == "__main__":
-    # If localhost is blocked, share must be True
     demo.queue(max_size=32).launch(
-        server_name="127.0.0.1",
+        server_name="0.0.0.0",
         server_port=int(os.getenv("PORT", "7860")),
-        share=False,
-        show_error=True
+        show_error=True,
+        share=True,
     )
