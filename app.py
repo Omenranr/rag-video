@@ -1,17 +1,25 @@
 #!/usr/bin/env python3
 """
-Gradio UI for video → (transcript + detections) → hybrid search → chat (multi‑LLM)
+Gradio UI for video → (transcript + detections) → hybrid search → chat (multi-LLM)
 + Providers: IBM watsonx.ai • OpenAI • Anthropic
 + Optional Web Search with Exa
 + Clickable timecodes to seek the video
 
+NEW (2025-09-07):
+- Answers now use **RAG + chat history**.
+- We (1) rewrite the latest user message into a **standalone question** using recent chat history,
+  (2) retrieve RAG context with that question,
+  (3) route to web search if needed,
+  (4) answer with the **conversation window + RAG + (optional) web snippets**.
+
 Flow:
-1) Retrieve transcript context (hybrid + rerank + ±N neighbors).
-2) Ask the chosen LLM to decide if web search is needed:
-   - If NO: LLM returns final answer (uses transcript context only).
+1) Contextualize the latest user message with chat history → standalone question.
+2) Retrieve transcript context (hybrid + rerank + ±N neighbors) with that standalone question.
+3) Ask the chosen LLM to decide if web search is needed:
+   - If NO: LLM returns final answer (uses transcript context + chat history).
    - If YES: LLM returns an EXACT search query string.
-3) If search needed: call Exa API → fetch results → second LLM call
-   to answer using transcript context + web snippets.
+4) If search needed: call Exa API → fetch results → second LLM call
+   to answer using transcript context + web snippets + chat history.
 
 Also:
 - Reuse existing outputs per video (outputs/<video_stem>_timestamp).
@@ -521,7 +529,95 @@ def exa_search_with_contents(query: str, api_key: str, num_results: int = 5, tim
 
 
 # ---------------------
-# Search decision helper
+# History helpers (NEW)
+# ---------------------
+
+def _format_history_as_text(history_msgs: List[Dict], max_turns: int = 8, max_chars: int = 6000) -> str:
+    """
+    Convert recent chat history into a compact text transcript for prompting.
+    Keeps the last `max_turns` messages (user+assistant counts as 2).
+    Also enforces an approximate char cap.
+    """
+    if not history_msgs:
+        return ""
+    # keep last N
+    recent = history_msgs[-max_turns:]
+    lines: List[str] = []
+    total = 0
+    for m in recent:
+        role = m.get("role", "user")
+        content = str(m.get("content", "")).strip()
+        pref = "User" if role == "user" else "Assistant"
+        line = f"{pref}: {content}"
+        total += len(line)
+        lines.append(line)
+        if total >= max_chars:
+            break
+    return "\n".join(lines)
+
+
+def _trim_history_messages(history_msgs: List[Dict], max_turns: int = 8, max_chars: int = 6000) -> List[Dict]:
+    """
+    Return recent history as a list of chat messages for the model,
+    limited by turns and approx characters.
+    """
+    if not history_msgs:
+        return []
+    recent = history_msgs[-max_turns:]
+    out: List[Dict] = []
+    total = 0
+    for m in recent:
+        content = str(m.get("content", "")).strip()
+        line_len = len(content)
+        if total + line_len > max_chars:
+            # If adding would exceed cap, try to add a truncated version
+            content = content[: max(0, max_chars - total)]
+        out.append({"role": m.get("role", "user"), "content": content})
+        total += len(content)
+        if total >= max_chars:
+            break
+    return out
+
+
+def contextualize_question(
+    provider: str,
+    cfg: Dict,
+    history_msgs: List[Dict],
+    latest_user_msg: str,
+) -> str:
+    """
+    Use an LLM to rewrite the latest user message into a standalone question,
+    leveraging the recent chat history.
+    """
+    history_text = _format_history_as_text(history_msgs, max_turns=10, max_chars=6000)
+    system = (
+        "You rewrite user questions into a single, clear standalone question.\n"
+        "Use the conversation so far to resolve pronouns, references, and ellipses.\n"
+        "Output ONLY the rewritten question, with no commentary or quotes."
+    )
+    user = (
+        f"Conversation so far:\n{history_text}\n\n"
+        f"Latest user message:\n{latest_user_msg}\n\n"
+        f"Rewritten standalone question:"
+    )
+    try:
+        out = llm_chat(
+            provider=provider,
+            cfg=cfg,
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            temperature=0.0,
+            max_tokens=200,
+        )
+        # sanitize trivial outputs
+        cleaned = (out or "").strip()
+        # avoid empty or overly short fallback
+        return cleaned if len(cleaned) >= 2 else str(latest_user_msg)
+    except Exception:
+        return str(latest_user_msg)
+
+
+# ---------------------
+# Search decision helper (history-aware, NEW)
 # ---------------------
 
 def wants_web_search_explicit(user_msg: str) -> bool:
@@ -550,6 +646,7 @@ def extract_json(text: str) -> Optional[Dict]:
     if m:
         blob = m.group(1)
     else:
+        # greedy but okay since we ask the model to return JSON ONLY
         m2 = re.search(r"(\{.*\})", text, flags=re.DOTALL)
         if m2:
             blob = m2.group(1)
@@ -567,9 +664,10 @@ def llm_decide_search(
     question: str,
     transcript_context: str,
     explicit_flag: bool,
+    history_text: str = "",
 ) -> Dict:
     """
-    Ask the selected LLM to decide whether to search the web.
+    Ask the selected LLM to decide whether to search the web, with awareness of chat history.
     Returns dict with keys:
       need_search: bool
       query: str | None
@@ -578,20 +676,21 @@ def llm_decide_search(
     """
     system = (
         "You are a retrieval QA router.\n"
-        "You are given a question and transcript context.\n"
-        "If the user explicitly asks to search the web OR the answer is not in the transcript context, "
-        "you must request a web search by returning JSON ONLY.\n"
+        "Inputs: (a) the conversation so far, (b) a standalone user question, and (c) transcript context.\n"
+        "If the user **explicitly** asks to search the web OR the answer is not found in the transcript context, "
+        "you MUST request a web search by returning JSON ONLY.\n"
         "Otherwise, answer using ONLY the transcript context and return JSON ONLY.\n"
         "JSON schema:\n"
-        '{"need_search": true|false, "query": string|null, "answer": string|null, "reason": string}'
-        "\nRules:\n"
+        '{"need_search": true|false, "query": string|null, "answer": string|null, "reason": string}\n'
+        "Rules:\n"
         "- If need_search=true: 'query' MUST be a single, precise web search string; 'answer' MUST be null.\n"
-        "- If need_search=false: 'answer' MUST contain the final answer grounded in context; 'query' MUST be null.\n"
+        "- If need_search=false: 'answer' MUST contain the final answer grounded in transcript context; 'query' MUST be null.\n"
         "- Never include explanations outside the JSON."
     )
     user = (
         f"Explicit_web_search_flag={explicit_flag}\n\n"
-        f"Question:\n{question}\n\n"
+        f"Conversation so far:\n{history_text}\n\n"
+        f"Standalone Question:\n{question}\n\n"
         f"Transcript context:\n{transcript_context}\n"
     )
     out = llm_chat(
@@ -755,7 +854,9 @@ def on_chat(
     """
     Generator that yields (messages, ts_radio_update, ts_map_state).
     Chatbot(type='messages'): messages must be [{'role','content'}, ...]
+    Now **history-aware**: we use chat history to contextualize the query and in the final answer.
     """
+    # The chat as displayed to the user
     msgs = list(history or [])
 
     # basic validations
@@ -779,14 +880,30 @@ def on_chat(
         yield msgs, gr.update(choices=[], value=None, visible=False), {}
         return
 
-    # show user message
-    msgs.append({"role": "user", "content": str(user_msg)})
+    # Append the user's latest message to the visible chat
+    latest_user = str(user_msg)
+    msgs.append({"role": "user", "content": latest_user})
 
-    # 1) Retrieval
+    # Prepare a trimmed history window (EXCLUDES the latest user msg for clarity in prompts)
+    history_window_for_rewrite = _trim_history_messages(history or [], max_turns=10, max_chars=6000)
+    history_text_for_router = _format_history_as_text(history or [], max_turns=10, max_chars=6000)
+
+    # === (1) Contextualize the question with history ===
+    try:
+        standalone_q = contextualize_question(
+            provider=(provider or "watsonx"),
+            cfg=cfg,
+            history_msgs=history_window_for_rewrite,  # only prior messages
+            latest_user_msg=latest_user,
+        )
+    except Exception:
+        standalone_q = latest_user
+
+    # === (2) Retrieval with the standalone question ===
     idx_dir = rec["index_dir"]
     idx = load_index(idx_dir)
     hits, ctx_text = compile_context_blocks(
-        idx=idx, query=str(user_msg), top_k=int(top_k), method=method, alpha=float(alpha),
+        idx=idx, query=str(standalone_q), top_k=int(top_k), method=method, alpha=float(alpha),
         rerank=rerank, rerank_model=rerank_model, overfetch=int(overfetch),
         ctx_before=int(ctx_before), ctx_after=int(ctx_after),
         device=(None if embed_device == "auto" else embed_device),
@@ -810,14 +927,16 @@ def on_chat(
 
     radio_update = gr.update(choices=labels, value=None, visible=bool(labels))
 
-    # 2) Ask LLM to decide about web search
-    explicit_flag = wants_web_search_explicit(str(user_msg))
+    # === (3) Router: decide about web search (history-aware) ===
+    explicit_flag = wants_web_search_explicit(latest_user)
     try:
         decision = llm_decide_search(
             provider=(provider or "watsonx"),
             cfg=cfg,
-            question=str(user_msg), transcript_context=ctx_text,
-            explicit_flag=explicit_flag
+            question=str(standalone_q),
+            transcript_context=ctx_text,
+            explicit_flag=explicit_flag,
+            history_text=history_text_for_router
         )
     except Exception as e:
         msgs.append({"role": "assistant", "content": f"Routing error: {e}"})
@@ -828,15 +947,43 @@ def on_chat(
     search_query = decision.get("query")
     direct_answer = decision.get("answer")
 
+    # === (4A) If no web search needed, answer using transcript + history ===
     if not need_search:
-        # LLM already answered using transcript context
-        if not direct_answer:
-            direct_answer = "Je n'ai pas trouvé d'information suffisante dans le transcript pour répondre."
-        msgs.append({"role": "assistant", "content": direct_answer})
-        yield msgs, radio_update, label_to_start
-        return
+        # Compose final messages with history window + a single user turn that includes context
+        history_for_model = _trim_history_messages(msgs[:-1], max_turns=10, max_chars=6000)  # include all previous turns
+        system = (
+            "Tu es un assistant qui répond en combinant:\n"
+            "1) le transcript (fiable pour les propos entendus et timestamps),\n"
+            "2) l'historique de la conversation (pour le contexte et les suivis),\n"
+            "Sans inventer au-delà du transcript. Indique les timecodes quand utiles."
+        )
+        # If the router provided an answer, we can return it directly; else ask model to compose an answer that uses ctx + history.
+        if direct_answer:
+            msgs.append({"role": "assistant", "content": direct_answer})
+            yield msgs, radio_update, label_to_start
+            return
+        else:
+            # Build a single 'user' message with the standalone question and the RAG context
+            user_full = (
+                f"Dernière question (standalone):\n{standalone_q}\n\n"
+                f"Transcript context (passages):\n{ctx_text}\n"
+            )
+            try:
+                final_answer = llm_chat(
+                    provider=(provider or "watsonx"),
+                    cfg=cfg,
+                    messages=[{"role": "system", "content": system}, *history_for_model, {"role": "user", "content": user_full}],
+                    temperature=0.2,
+                    max_tokens=900,
+                )
+            except Exception as e:
+                final_answer = f"LLM error: {e}"
 
-    # need_search = True → we expect an exact search query
+            msgs.append({"role": "assistant", "content": final_answer})
+            yield msgs, radio_update, label_to_start
+            return
+
+    # === (4B) Web search suggested ===
     if not search_query:
         msgs.append({"role": "assistant", "content": "La recherche web a été suggérée, mais aucune requête n'a été fournie."})
         yield msgs, radio_update, label_to_start
@@ -876,25 +1023,27 @@ def on_chat(
         web_blocks.append(block)
     web_context = "\n\n".join(web_blocks)
 
-    # 4) Final LLM call with transcript + web context
+    # 4) Final LLM call with history + transcript + web context
     system = (
         "Tu es un assistant qui répond en combinant:\n"
-        "1) le transcript du match (fiable pour les propos entendus/timestamps)\n"
-        "2) des extraits web (fiables pour faits externes).\n"
+        "1) l'historique de la conversation (pour le contexte et les suivis),\n"
+        "2) le transcript (fiable pour les propos entendus/timestamps),\n"
+        "3) des extraits web (fiables pour faits externes).\n"
         "Indique les timecodes du transcript quand utiles.\n"
         "Quand tu t'appuies sur le web, cite les sources avec leurs numéros [1], [2], etc."
     )
     user_full = (
-        f"Question:\n{user_msg}\n\n"
+        f"Dernière question (standalone):\n{standalone_q}\n\n"
         f"Transcript context:\n{ctx_text}\n\n"
         f"Web results:\n{web_context}"
     )
 
+    history_for_model = _trim_history_messages(msgs[:-1], max_turns=10, max_chars=6000)
     try:
         final_answer = llm_chat(
             provider=(provider or "watsonx"),
             cfg=cfg,
-            messages=[{"role": "system", "content": system}, {"role": "user", "content": user_full}],
+            messages=[{"role": "system", "content": system}, *history_for_model, {"role": "user", "content": user_full}],
             temperature=0.2,
             max_tokens=900,
         )
@@ -920,8 +1069,8 @@ def toggle_provider_panels(provider: str):
 # ---------------------
 # Gradio Layout
 # ---------------------
-with gr.Blocks(title="Video RAG Chat (Gradio + Multi‑LLM + Exa)", fill_height=True) as demo:
-    gr.Markdown("## 🎬 Video RAG Chat\nScan → select video → reuse **existing outputs** or **Generate** → chat with transcript.\nOptional: let the assistant trigger **web search** via Exa when needed.\n\n**LLM Providers:** IBM watsonx.ai • OpenAI • Anthropic")
+with gr.Blocks(title="Video RAG Chat (Gradio + Multi-LLM + Exa)", fill_height=True) as demo:
+    gr.Markdown("## 🎬 Video RAG Chat\nScan → select video → reuse **existing outputs** or **Generate** → chat with transcript.\nOptional: let the assistant trigger **web search** via Exa when needed.\n\n**LLM Providers:** IBM watsonx.ai • OpenAI • Anthropic\n\n**New:** answers use **RAG + chat history** for follow-ups and pronouns.")
 
     with gr.Row():
         with gr.Column(scale=3):
@@ -1094,7 +1243,7 @@ with gr.Blocks(title="Video RAG Chat (Gradio + Multi‑LLM + Exa)", fill_height=
         if (video.readyState >= 1) seek();
         else video.addEventListener("loadedmetadata", seek, { once: true });
 
-        return logs.join("\n");
+        return logs.join("\\n");
         }
         """
     )
