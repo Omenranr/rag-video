@@ -1,0 +1,39 @@
+# GENERAL VIDEO METADATA
+
+## Technical
+{
+  "file_name": "documentary_480p.mp4",
+  "abs_path": "/workspace/documentary_480p.mp4",
+  "created_at": "20250913_154242",
+  "video_length_sec": 867.04,
+  "fps": 25.0,
+  "width": 854,
+  "height": 358,
+  "num_scenes_10s": 87,
+  "scene_seconds": 10,
+  "global_sample_frames": 16
+}
+
+## Model-Inferred (Global Sampling)
+[TYPE]  
+Documentary/Nature Film  
+
+[SUMMARY]  
+The video showcases a safari adventure in the wild, capturing scenes of vehicles navigating through open grasslands. It features close-ups of cheetahs interacting with humans and highlights various moments of wildlife observation at sunset. The footage emphasizes exploration and encounters with nature, focusing on both human activities and animal behavior in their natural habitat.
+
+## Aggregated Context (Confronted Facts)
+Likely type: Documentary/Nature Film
+Likely video type: Documentary/Nature Film
+Global summary: The video showcases a safari adventure in the wild, capturing scenes of vehicles navigating through open grasslands. It features close-ups of cheetahs interacting with humans and highlights various moments of wildlife observation at sunset. The footage emphasizes exploration and encounters with nature, focusing on both human activities and animal behavior in their natural habitat.
+Frequent entities: unknown (x53), cheetah (x6), kristina perlerius (x6), vehicle (x3), cheetah cubs (x2), safari vehicle (x2), "100 years ago.. there were approximately 65,0o0 cheetahs on this planet." (x1), "100 years agо, тнеre were авоut 100,ooo снеетанѕ оn тніs рlаnε." (x1), ** cheetah** (x1), ** director of photography** (x1), ** executive producer** (x1), ** person** (x1), **sound design** ricardo neivalogo (x1), : cheetah (x1), cheetahs (x1)
+Frequent actions: <t≈+2-4s>: no significant action changes observed. (x12), <t≈ +0-2s>: cheetah remains stationary while looking around. (x8), <t≈+2-4s>: no significant action changes observed (x6), <t≈ +0-2s>: man remains stationary while talking. (x5), <t≈ +0-2s>: camera continues moving forward along the road. (x3), <t≈ +0-2s>: camera pans over the landscape from above (x3), <t≥ +2-4s>: no significant action changes observed. (x3), <t≈ +0-2s>: camera continues moving forward along the road (x2), <t≈ +0-2s>: camera remains stationary as subject sits calmly (x2), <t≈ +0-2s>: camera remains stationary as subjects sit calmly (x2), <t≈ +0-2s>: camera remains stationary as subjects sit calmly. (x2), <t≈ +0-2s>: man remains stationary while sitting and talking. (x2), <t≈ +0-2s: camera remains stationary as subjects sit calmly> (x1), <t≈ +0-2s>: camera pans over the landscape from above. (x1), <t≈ +0-2s>: camera remains stationary as it captures the subject sitting calmly. (x1)
+Frequent tags: nature (x87), wildlife (x82), safari (x79), observation (x50)
+
+## Top Entities
+unknown (x53), cheetah (x6), kristina perlerius (x6), vehicle (x3), cheetah cubs (x2), safari vehicle (x2), "100 years ago.. there were approximately 65,0o0 cheetahs on this planet." (x1), "100 years agо, тнеre were авоut 100,ooo снеетанѕ оn тніs рlаnε." (x1), ** cheetah** (x1), ** director of photography** (x1), ** executive producer** (x1), ** person** (x1), **sound design** ricardo neivalogo (x1), : cheetah (x1), cheetahs (x1), information about cheetah conservation project success (x1), sheep (x1), tiger leader vehicle (x1), tree (x1)
+
+## Top Actions
+<t≈+2-4s>: no significant action changes observed. (x12), <t≈ +0-2s>: cheetah remains stationary while looking around. (x8), <t≈+2-4s>: no significant action changes observed (x6), <t≈ +0-2s>: man remains stationary while talking. (x5), <t≈ +0-2s>: camera continues moving forward along the road. (x3), <t≈ +0-2s>: camera pans over the landscape from above (x3), <t≥ +2-4s>: no significant action changes observed. (x3), <t≈ +0-2s>: camera continues moving forward along the road (x2), <t≈ +0-2s>: camera remains stationary as subject sits calmly (x2), <t≈ +0-2s>: camera remains stationary as subjects sit calmly (x2), <t≈ +0-2s>: camera remains stationary as subjects sit calmly. (x2), <t≈ +0-2s>: man remains stationary while sitting and talking. (x2), <t≈ +0-2s: camera remains stationary as subjects sit calmly> (x1), <t≈ +0-2s>: camera pans over the landscape from above. (x1), <t≈ +0-2s>: camera remains stationary as it captures the subject sitting calmly. (x1), <t≈ +0-2s>: camera remains stationary as the subjects sit calmly (x1), <t≈ +0-2s>: camera remains stationary capturing the subjects. (x1), <t≈ +0-2s>: cheetah remains stationary in the grass. (x1), <t≈ +0-2s>: cheetah remains stationary while looking at the carcass. (x1), <t≈ +0-2s>: cheetah remains stationary while observing the carcass. (x1)
+
+## Top Tags
+nature (x87), wildlife (x82), safari (x79), observation (x50)

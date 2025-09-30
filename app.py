@@ -233,15 +233,25 @@ def compile_context_blocks(idx, query: str, top_k: int, method: str, alpha: floa
 
     enriched = idx.attach_context(hits, before=ctx_before, after=ctx_after)
 
+
     blocks = []
     for h in enriched:
+        source_label = format_source_label(h.get("source"))
         ctx_sorted = sorted(h["context"], key=lambda c: (c["offset"] != 0, c["offset"]))
-        lines = [f"[{c['start_srt']}–{c['end_srt']}] {c['text']}".strip() for c in ctx_sorted]
-        block = f"### Passage {h['rank']} | Main: {h['start_srt']}–{h['end_srt']}\n" + "\n".join(lines)
+        lines: List[str] = []
+        for c in ctx_sorted:
+            line_source = format_source_label(c.get("source"))
+            lines.append(f"[{c['start_srt']} - {c['end_srt']}] ({line_source}) {c['text']}".strip())
+        header = "### Passage {rank} | Source: {source} | Main: {start} - {end}".format(
+            rank=h.get('rank'),
+            source=source_label,
+            start=h.get('start_srt'),
+            end=h.get('end_srt'),
+        )
+        block = header + "\n" + "\n".join(lines)
         blocks.append(block)
     full_context = "\n\n".join(blocks)
     return enriched, full_context
-
 # ---------------------
 # LLM clients (watsonx.ai, OpenAI, Anthropic)
 # ---------------------
@@ -737,13 +747,35 @@ def on_use_existing(selected_outputs, video_path, state_dict,
 
     idx_dir = latest_rag_index_dir(str(out_dir))
     built = False
-    if idx_dir is None:
+    vlm_artifacts = None
+    try:
+        from multimodal_rag import discover_vlm_artifacts  # type: ignore
+        vlm_artifacts = discover_vlm_artifacts(out_dir, video_path=video_path)
+    except Exception:
+        vlm_artifacts = None
+
+    if idx_dir is not None:
+        idx_obj = load_index(idx_dir)
+        sources = tuple(getattr(getattr(idx_obj, "meta", None), "sources", ()) or ())
+        has_vlm = any(src.startswith("vlm") for src in sources)
+        if vlm_artifacts and not has_vlm:
+            idx_dir = build_index_from_srt(
+                transcript_path=str(out_dir / "transcript.srt"),
+                window=int(window), anchor=anchor,
+                embed_model=embed_model,
+                device=(None if embed_device == "auto" else embed_device),
+                progress=None,
+                video_path=(str(video_path) if video_path else None),
+            )
+            built = True
+    else:
         idx_dir = build_index_from_srt(
             transcript_path=str(out_dir / "transcript.srt"),
             window=int(window), anchor=anchor,
             embed_model=embed_model,
             device=(None if embed_device == "auto" else embed_device),
-            progress=None
+            progress=None,
+            video_path=(str(video_path) if video_path else None),
         )
         built = True
 
@@ -779,7 +811,8 @@ def do_generate(folder, video_path, outputs_root,
     idx_dir = build_index_from_srt(
         transcript_path=srt_path, window=int(window), anchor=anchor,
         embed_model=embed_model, device=(None if embed_device == "auto" else embed_device),
-        progress=progress
+        progress=progress,
+        video_path=(str(video_path) if video_path else None),
     )
     progress(0.9, desc="Index ready.")
 
@@ -920,8 +953,9 @@ def on_chat(
         end_srt = main.get("end_srt", h.get("end_srt", "00:00:00,000"))
         snippet = (main.get("text", "") or "").replace("\n", " ")
         if len(snippet) > 100:
-            snippet = snippet[:97] + "…"
-        label = f"{start_srt} – {end_srt} · {snippet}".strip()
+            snippet = snippet[:97] + "..."
+        source_label = format_source_label(h.get("source"))
+        label = f"[{source_label}] {start_srt} - {end_srt} | {snippet}".strip()
         labels.append(label)
         label_to_start[label] = srt_to_seconds(start_srt)
 
@@ -1297,5 +1331,5 @@ if __name__ == "__main__":
         server_name="0.0.0.0",
         server_port=int(os.getenv("PORT", "7860")),
         show_error=True,
-        share=True,
+        share=False,
     )
