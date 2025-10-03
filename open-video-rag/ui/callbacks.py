@@ -5,21 +5,17 @@ import shutil
 import time
 import datetime
 import json
-# from resources.consts import *
-# from utils.common import *
-# from utils.stt import *
-# from utils.video import *
-# from utils.chat import *
 from resources.consts import *
 from utils.visual import list_videos, find_existing_outputs_for_video, has_visual_artifacts, build_visual_index, ctx_md_from_hits_aggregated, hits_from_scene_rows, load_scene_rows_from_csv
 from utils.stt import find_any_srt, find_audio_file_in, build_index_from_srt, srt_to_seconds
 from utils.common import find_existing_indexes, safe_stem, load_index, format_source_label
 from utils.chat import sanitize_scene_output, trim_history_messages, contextualize_question, format_history_as_text
-from logic.intent_detection import detect_entity_intent, llm_decide_search, wants_recent_info, wants_web_search_explicit, llm_detect_intent_entities
-from logic.entity_matching import llm_match_entities_to_keys, fuzzy_pick_entity
-from logic.rag import compile_context_blocks_multi, auto_select_sources_from_query, load_entities_scenes_from_context
+from core.intent_detection import detect_entity_intent, llm_decide_search, wants_recent_info, wants_web_search_explicit, llm_detect_intent_entities
+from core.entity_matching import llm_match_entities_to_keys, fuzzy_pick_entity
+from core.chat_context import compile_context_blocks_multi, auto_select_sources_from_query, load_entities_scenes_from_context
 from chat.llm import llm_chat_stream
 from tools.exa import exa_search_with_contents
+
 
 # ---------------------
 # Gradio callbacks
