@@ -1,0 +1,40 @@
+# GENERAL VIDEO METADATA
+
+## Technical
+{
+  "file_name": "video_2.mp4",
+  "abs_path": "/workspace/video_2.mp4",
+  "created_at": "20250920_031249",
+  "video_length_sec": 3173.08,
+  "fps": 25.0,
+  "width": 854,
+  "height": 480,
+  "num_scenes_10s": 318,
+  "scene_seconds": 10,
+  "global_sample_frames": 16
+}
+
+## Model-Inferred (Global Sampling)
+[TYPE]
+Travel Vlog
+
+[SUMMARY]
+This travel vlog showcases various scenes from Albania, highlighting different locations and interactions. The video features the person exploring urban areas, markets, and scenic outdoor locations. It includes segments with locals, architectural views, and everyday life in Albania, providing a glimpse into the culture and environment of the country. The vlog captures a mix of personal experiences, conversations, and picturesque landscapes, offering viewers an engaging and informative journey through Albania.
+
+## Aggregated Context (Confronted Facts)
+Likely type: Travel Vlog
+Likely video type: Travel Vlog
+Global summary: This travel vlog showcases various scenes from Albania, highlighting different locations and interactions. The video features the person exploring urban areas, markets, and scenic outdoor locations. It includes segments with locals, architectural views, and everyday life in Albania, providing a glimpse into the culture and environment of the country. The vlog captures a mix of personal experiences, conversations, and picturesque landscapes, offering viewers an engaging and informative journey through Albania.
+Frequent entities: man in red shirt (x182), albania (x156), vlogger (x64), man in striped shirt (x27), man in white shirt (x26), man in yellow shirt (x18), man in black shirt (x15), café (x14), group of men (x12), man in green shirt (x11), albanie (x10), woman (x10), "l'île dormir chez vous" (x9), child (x9), man in patterned shirt (x9)
+Frequent actions: <t≈ +0-2s: man in red shirt walks and interacts with surroundings> (x2), <t≈ +0-2s: display production credits> (x1), <t≈ +0-2s: group of men conversing outside a building.> (x1), <t≈ +0-2s: group of men seated at tables, conversing and playing cards.> (x1), <t≈ +0-2s: group of people seated at a table, eating and conversing.> (x1), <t≈ +0-2s: group of people standing and conversing> (x1), <t≈ +0-2s: man in green shirt plays acoustic guitar.> (x1), <t≈ +0-2s: man in red shirt converses with a group of men, smiling and gesturing with his hand. (x1), <t≈ +0-2s: man in red shirt gestures and speaks; man in striped shirt listens attentively.> (x1), <t≈ +0-2s: man in red shirt speaks to the camera; man in yellow shirt arranges items on shelves.> (x1), <t≈ +0-2s: man in red shirt talks to the camera; man in yellow shirt stands in the background.> (x1), <t≈ +0-2s: man in striped shirt sits at table with drinks and small dish. man in red shirt stands nearby.> (x1), <t≈ +0-2s: man sets up a bed frame.> (x1), <t≈ +0-2s: men are seated at a table, eating and conversing. one man in a red shirt gestures while speaking.> (x1), <t≈ +0-2s: montage of images showing a person holding a camera.> (x1)
+Frequent tags: albania (x270), travel (x258), vlog (x250), conversation (x206), people (x206), street (x93), outdoor (x89), indoor (x82), urban (x64), albanie (x43), locals (x31), café (x24), beach (x14), market (x10), rural (x10)
+Frequent brands: "l'île dormir chez vous" (x173), l'île dormir chez vous (x47), "j'irai dormir chez vous" (x36), "albanie" (x15), nike (x8), "l'île d'ici chez vous" (x7), "l'île chez vous" (x6), j'irai dormir chez vous (x5), puma (x5), pepsi (x3), uesaer travel & tours (x3), "l'île dortir chez vous" (x2), albanie (x2), euro bet (x2), lipari chez vous (x2)
+
+## Top Entities
+man in red shirt (x182), albania (x156), vlogger (x64), man in striped shirt (x27), man in white shirt (x26), man in yellow shirt (x18), man in black shirt (x15), café (x14), group of men (x12), man in green shirt (x11), albanie (x10), woman (x10), "l'île dormir chez vous" (x9), child (x9), man in patterned shirt (x9), person in red shirt (x9), l'île dormir chez vous (x8), man in beige shirt (x8), car (x7), children (x7)
+
+## Top Actions
+<t≈ +0-2s: man in red shirt walks and interacts with surroundings> (x2), <t≈ +0-2s: display production credits> (x1), <t≈ +0-2s: group of men conversing outside a building.> (x1), <t≈ +0-2s: group of men seated at tables, conversing and playing cards.> (x1), <t≈ +0-2s: group of people seated at a table, eating and conversing.> (x1), <t≈ +0-2s: group of people standing and conversing> (x1), <t≈ +0-2s: man in green shirt plays acoustic guitar.> (x1), <t≈ +0-2s: man in red shirt converses with a group of men, smiling and gesturing with his hand. (x1), <t≈ +0-2s: man in red shirt gestures and speaks; man in striped shirt listens attentively.> (x1), <t≈ +0-2s: man in red shirt speaks to the camera; man in yellow shirt arranges items on shelves.> (x1), <t≈ +0-2s: man in red shirt talks to the camera; man in yellow shirt stands in the background.> (x1), <t≈ +0-2s: man in striped shirt sits at table with drinks and small dish. man in red shirt stands nearby.> (x1), <t≈ +0-2s: man sets up a bed frame.> (x1), <t≈ +0-2s: men are seated at a table, eating and conversing. one man in a red shirt gestures while speaking.> (x1), <t≈ +0-2s: montage of images showing a person holding a camera.> (x1), <t≈ +0-2s: pan across the market stalls showing shoes and clothing vendors.> (x1), <t≈ +0-2s: people are seated and conversing, with some individuals gesturing and moving around.> (x1), <t≈ +0-2s: people conversing and walking on a street. vlogger engages with locals.> (x1), <t≈ +0-2s: people toast with beer bottles at a dining table.> (x1), <t≈ +0-2s: person stands and speaks to the camera.> (x1)
+
+## Top Tags
+albania (x270), travel (x258), vlog (x250), conversation (x206), people (x206), street (x93), outdoor (x89), indoor (x82), urban (x64), albanie (x43), locals (x31), café (x24), beach (x14), market (x10), rural (x10), night (x9), dining (x8), family (x8), restaurant (x8), coastal (x7)

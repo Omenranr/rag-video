@@ -51,7 +51,6 @@ aclient: Optional[AsyncOpenAI] = None
 # ----------------------------
 # Defaults (overridable via CLI)
 # ----------------------------
-VIDEO_PATH = "video_3.mp4"
 SCENE_SECONDS = 10
 
 GLOBAL_SAMPLE_SEGMENTS = 16
@@ -101,40 +100,160 @@ class Profile:
     top_p: Optional[float] = None
     max_new_tokens: Optional[int] = None
 
-# Built-in profiles
-PROFILES: Dict[str, Profile] = {
+# -*- coding: utf-8 -*-
+"""
+Dynamic, compact scene prompt builder for a video RAG pipeline.
+- Only include sections relevant to the selected profile packs.
+- Keeps prompts concise without sacrificing information quality.
+- Optimized to reduce output tokens in the RAG chat context.
+
+Assumptions:
+- PACK_CHECKLISTS: Dict[str, str] exists elsewhere (unchanged), mapping pack name -> short checklist text.
+- Profile class exists and has fields: name, packs, temperature, top_p, max_new_tokens.
+- LOGGER exists.
+"""
+from typing import Dict, List
+import os
+
+# ----------------------------
+# Built-in profiles (unchanged except comments)
+# ----------------------------
+PROFILES: Dict[str, "Profile"] = {
     "default": Profile("default", ["entities_basic", "ocr", "actions", "tags", "shot"]),
-    "brand_heavy": Profile("brand_heavy", [
-        "entities_basic", "ocr", "actions", "tags", "shot",
-        "brands_logos", "products"
-    ], temperature=0.6),
-    "sports": Profile("sports", [
-        "entities_basic", "ocr", "actions", "tags", "shot",
-        "sports_core"
-    ]),
-    "compliance": Profile("compliance", [
-        "entities_basic", "ocr", "actions", "tags", "shot",
-        "pii_compliance", "safety"
-    ]),
-    "slides_docs": Profile("slides_docs", [
-        "entities_basic", "ocr", "actions", "tags", "shot",
-        "docs_slides_ui"
-    ], temperature=0.5, top_p=0.8),
+    "brand_heavy": Profile(
+        "brand_heavy",
+        [
+            "entities_basic", "ocr", "actions", "tags", "shot",
+            "brands_logos", "products"
+        ],
+        temperature=0.6,
+    ),
+    "sports": Profile(
+        "sports",
+        [
+            "entities_basic", "ocr", "actions", "tags", "shot",
+            "sports_core"
+        ],
+    ),
+    "compliance": Profile(
+        "compliance",
+        [
+            "entities_basic", "ocr", "actions", "tags", "shot",
+            "pii_compliance", "safety"
+        ],
+    ),
+    "slides_docs": Profile(
+        "slides_docs",
+        [
+            "entities_basic", "ocr", "actions", "tags", "shot",
+            "docs_slides_ui"
+        ],
+        temperature=0.5, top_p=0.8,
+    ),
 }
 
 # Allow env to pick default profile
 DEFAULT_PROFILE_NAME = os.getenv("VIDEO_RAG_PROFILE", "brand_heavy")
 
 # ----------------------------
-# Prompts
+# Compact global prompt
 # ----------------------------
 GLOBAL_PROMPT = (
-    "You are analyzing sampled frames from the WHOLE video. Provide:\n"
-    "- Video type/genre (e.g., sports/soccer match highlight, vlog, screencast, ad, tutorial, etc.)\n"
-    "- Accurate summary of the video (4-5 sentences)\n"
-    "Return sections: [TYPE], [SUMMARY]"
+    "You see sampled frames from a full video. Return: \n"
+    "[TYPE]: short video type/genre.\n"
+    "[SUMMARY]: tight 4–5 sentence synopsis of the entire video."
 )
 
+# ----------------------------
+# Dynamic schema helpers
+# ----------------------------
+# Map packs -> extraction blocks. Only blocks for packs present will be emitted.
+# You can customize block text per your downstream parser.
+EXTRACTION_BLOCKS: Dict[str, str] = {
+    # brand_heavy specifics
+    "brands_logos": (
+        "brands_logos:\n"
+        "  - name: <str>\n"
+        "    where: [jersey|billboard|sign|ui|packaging|other]\n"
+        "    ocr_text: <str|empty>\n"
+        "    candidates_if_uncertain: [<str>, <str>, <str>]\n"
+        "    confidence: <0.0-1.0>\n"
+    ),
+    "products": (
+        "products:\n"
+        "  - category: <str>\n"
+        "    model_or_series: <str|empty>\n"
+        "    attributes: [<short>]\n"
+    ),
+    # compliance specifics
+    "pii_compliance": (
+        "pii:\n"
+        "  - type: <plate|badge|phone|qr|barcode|other>\n"
+        "    present: <true|false>\n"
+    ),
+    "safety": (
+        "safety:\n"
+        "  - nsfw: <none|mild|explicit>\n"
+        "  - violence: <none|mild|graphic>\n"
+        "  - risky_act: <none|present>\n"
+    ),
+    # sports specifics
+    "sports_core": (
+        "sports:\n"
+        "  - teams: [<str>]\n"
+        "  - jerseys_visible: [<#>]\n"
+        "  - scoreboard_text: <str|empty>\n"
+        "  - phase_or_clock: <str|empty>\n"
+    ),
+    # slides/docs specifics
+    "docs_slides_ui": (
+        "docs_ui:\n"
+        "  - has_slides_or_docs: <true|false>\n"
+        "  - has_charts_or_tables: <true|false>\n"
+        "  - app_or_tool_names: [<str>]\n"
+    ),
+}
+
+# Core high-level sections (enabled by foundational packs)
+CORE_SECTIONS = {
+    "ocr": "OnScreenText",
+    "entities_basic": "Entities",
+    "actions": "Actions",
+    "tags": "Tags",
+    "shot": "Shot",
+}
+
+
+def _build_extraction_schema(packs: List[str]) -> str:
+    """Return a compact YAML-ish schema including only blocks for present packs."""
+    blocks = []
+    for p in packs:
+        block = EXTRACTION_BLOCKS.get(p)
+        if block:
+            blocks.append(block.strip())
+    if not blocks:
+        return ""  # No optional extraction blocks
+
+    header = (
+        "# Concept Extractions (only for enabled packs; use [] when none)\n"
+        "# Keep factual; return only the card content below.\n"
+    )
+    return header + "\n" + "\n".join(blocks)
+
+
+def _compact_checklist(packs: List[str]) -> str:
+    """Return a minimal checklist text for the selected packs."""
+    lines = []
+    for p in packs:
+        desc = PACK_CHECKLISTS.get(p)
+        if desc:
+            lines.append(f"[{p}] {desc}")
+    return "\n".join(lines)
+
+
+# ----------------------------
+# Scene prompt (dynamic & compact)
+# ----------------------------
 def build_scene_prompt(global_context_text: str,
                        scene_id: int,
                        start_s: float,
@@ -142,115 +261,122 @@ def build_scene_prompt(global_context_text: str,
                        video_name: str,
                        start_tc: str,
                        end_tc: str,
-                       profile: Profile) -> str:
-    # Build checklist from selected concept packs
-    checklist_lines = []
-    for p in profile.packs:
-        desc = PACK_CHECKLISTS.get(p)
-        if desc:
-            checklist_lines.append(f"[{p}]")
-            checklist_lines.append(desc)
-    checklist = "\n".join(checklist_lines) if checklist_lines else "(none)"
+                       profile: "Profile") -> str:
+    """Build a token-lean scene prompt including only sections relevant to the profile."""
+    packs = profile.packs or []
 
-    # Concept extraction schema (text, simple to parse)
-    extraction_schema = """
-# Concept Extractions (fill per schema; use [] when none)
-brands_logos:
-  - name: <string>
-    where: [jersey|billboard|sign|ui|packaging|other]
-    ocr_text: <string|empty>
-    candidates_if_uncertain: [<string>, <string>, <string>]
-    confidence: <0.0-1.0>
+    # Dynamic checklist and extraction schema
+    checklist = _compact_checklist(packs)
+    extraction_schema = _build_extraction_schema(packs)
 
-products:
-  - category: <string>
-    model_or_series: <string|empty>
-    attributes: [<short>]
+    # Determine which core sections to include
+    include_ocr = "ocr" in packs
+    include_entities = "entities_basic" in packs
+    include_actions = "actions" in packs
+    include_tags = "tags" in packs
+    include_shot = "shot" in packs
 
-pii:
-  - type: <plate|badge|phone|qr|barcode|other>
-    present: <true|false>
+    # --- Card assembly ---
+    parts: List[str] = []
 
-safety:
-  - nsfw: <none|mild|explicit>
-  - violence: <none|mild|graphic>
-  - risky_act: <none|present>
+    # Brief preamble (single sentence)
+    parts.append(
+        "You will receive frames from a ~10s scene. Use GLOBAL CONTEXT only to disambiguate; do not contradict frames.\n"
+    )
 
-sports:
-  - teams: [<string>]
-  - jerseys_visible: [<#>]
-  - scoreboard_text: <string|empty>
-  - phase_or_clock: <string|empty>
+    # Global context (trimmed)
+    gc = (global_context_text or "").strip()
+    if gc:
+        parts.append(f"GLOBAL CONTEXT:\n{gc}\n")
 
-docs_ui:
-  - has_slides_or_docs: <true|false>
-  - has_charts_or_tables: <true|false>
-  - app_or_tool_names: [<string>]
-""".strip()
+    # Checklist (optional)
+    if checklist:
+        parts.append(f"CHECKLIST:\n{checklist}\n")
 
-    return f"""
-You will receive frames from a ~10-second SCENE of a video.
-Use the GLOBAL CONTEXT to disambiguate when helpful, but do not contradict the visible frames.
+    # Header for the card
+    parts.append("Return ONE SCENE CARD in plain text (no code fences). Be concise, factual.\n---")
 
-GLOBAL CONTEXT (aggregated; may include inferred type/summary/entities/actions):
-{global_context_text.strip()}
+    # Meta
+    parts.append(
+        (
+            "\nMeta:\n"
+            f"- video_name: {video_name}\n"
+            f"- scene_id: {scene_id}\n"
+            f"- start_sec: {start_s:.3f}\n"
+            f"- end_sec: {end_s:.3f}\n"
+            f"- start_timecode: {start_tc}\n"
+            f"- end_timecode: {end_tc}"
+        )
+    )
 
-CONCEPT CHECKLIST (cover these precisely; be concise):
-{checklist}
+    # Description (always included)
+    parts.append(
+        "\n\nDescription:\n- description: 4–5 lines summarizing who/what/where/context (visible facts only)"
+    )
 
-TASK:
-Return a RAG SCENE CARD in plain text (no code fences). Keep it factual and concise.
----
-Meta:
-- video_name: {video_name}
-- scene_id: {scene_id}
-- start_sec: {start_s:.3f}
-- end_sec: {end_s:.3f}
-- start_timecode: {start_tc}
-- end_timecode: {end_tc}
+    # Actions (chronology) if enabled
+    if include_actions:
+        parts.append(
+            (
+                "\n- actions_chronological:\n"
+                "  - t≈0–2s: <action>\n"
+                "  - t≈2–4s: <action>\n"
+                "  - t≈4–6s: <action>\n"
+                "  - t≈6–8s: <action>\n"
+                "  - t≈8–10s: <action>"
+            )
+        )
 
-Description:
-- description: detailed accurate and factual context capturing all relevant informations of the video <4-5 lines of who/what/where and context>
-- actions_chronological:
-  - <t≈ +0-2s: action phrase>
-  - <t≈ +2-4s: action phrase>
-  - <...>
+    # On-screen text if OCR enabled
+    if include_ocr:
+        parts.append(
+            (
+                "\n\nOnScreenText:\n- lines:\n"
+                "  - <exact legible line 1>\n"
+                "  - <exact legible line 2>"
+            )
+        )
 
-OnScreenText:
-- lines:
-  - <exact OCR line 1>
-  - <exact OCR line 2>
-  - ...
+    # Entities if enabled
+    if include_entities:
+        parts.append(
+            (
+                "\n\nEntities:\n- items:\n"
+                "  - type: <person/team/logo/brand/location/object/number/other>\n"
+                "    name_or_value: <best guess or exact text>\n"
+                "    attributes: [<short attrs>]\n"
+                "    confidence: <0.0-1.0>"
+            )
+        )
 
-Entities:
-- items:
-  - type: <person/team/logo/brand/location/object/number/other>
-    name_or_value: <best guess or exact text>
-    attributes: [<short attrs like jersey #, color, role, number>]
-    confidence: <0.0-1.0>
-  - ...
+    # Tags if enabled
+    if include_tags:
+        parts.append("\n\nTags:\n- scene_tags: [<short keywords>]")
 
-Tags:
-- scene_tags: [<short keywords like teams, brands, numbers, jersey ids, location>, ...]
+    # Shot if enabled
+    if include_shot:
+        parts.append(
+            (
+                "\n\nShot:\n- camera_motion: [<pan/tilt/handheld/static/zoom>]\n"
+                "- camera_angle: [<wide/close-up/top-down>]\n"
+                "- cuts_or_transitions: [<hard cut/dissolve/wipe|none>]"
+            )
+        )
 
-Shot:
-- camera_motion: [<pan/tilt/handheld/static/zoom>, ...]
-- camera_angle: [<wide/close-up/top-down>, ...]
-- cuts_or_transitions: [<if any>, ...]
+    # Optional extractions (only for enabled packs)
+    if extraction_schema:
+        parts.append("\n\n" + extraction_schema)
 
-{extraction_schema}
+    # Confidence (conditional subfields)
+    conf_lines = ["- overall: <0.0-1.0>"]
+    if include_ocr:
+        conf_lines.append("- ocr: <0.0-1.0>")
+    if include_entities:
+        conf_lines.append("- entity_detection: <0.0-1.0>")
+    parts.append("\n\nConfidence:\n" + "\n".join(conf_lines))
 
-Confidence:
-- overall: <0.0-1.0>
-- ocr: <0.0-1.0>
-- entity_detection: <0.0-1.0>
+    return "".join(parts)
 
-NOTES:
-- For OnScreenText, list ALL legible text exactly as written (preserve case).
-- Prefer short bullets; keep chronology coarse (0–2s, 2–4s, etc.).
-- If unknown or not visible, write 'unknown' or use empty lists [].
-- Return ONLY the card content above (no extra commentary).
-""".strip()
 
 # ----------------------------
 # Logging & Clean Live reporter
@@ -1178,7 +1304,7 @@ async def main_async(args):
 
 def build_arg_parser():
     p = argparse.ArgumentParser(description="Video RAG Strategy 2 (clean live + profiles)")
-    p.add_argument("--video", default=VIDEO_PATH, help="Path to input video")
+    p.add_argument("--video", help="Path to input video")
 
     # Endpoint/model
     p.add_argument("--base-url", default=None, help="OpenAI-compatible base URL (default from env or localhost)")

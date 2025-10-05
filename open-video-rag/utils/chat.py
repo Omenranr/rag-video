@@ -64,6 +64,46 @@ def contextualize_question(
         return str(latest_user_msg)
 
 
+def messages_preview_text(messages: List[Dict]) -> Tuple[str, int, int]:
+    """
+    Build a readable preview of what will be sent to the LLM and compute lengths.
+    Returns (preview_text, total_chars, approx_tokens).
+    Token approximation uses 4 chars/token heuristic.
+    """
+    parts = []
+    total_chars = 0
+
+    for m in messages:
+        role = m.get("role", "user")
+        content = m.get("content", "")
+        # content may be a list (Anthropic content blocks); normalize to text
+        if isinstance(content, list):
+            text = "\n".join([c.get("text", str(c)) if isinstance(c, dict) else str(c) for c in content])
+        else:
+            text = str(content)
+        header = f"--- {role.upper()} ---"
+        parts.append(header)
+        parts.append(text)
+        total_chars += len(text)
+
+    preview = "\n".join(parts)
+    approx_tokens = max(1, total_chars // 4)
+    return preview, total_chars, approx_tokens
+
+
+def redact_cfg_for_preview(cfg: Dict) -> Dict:
+    """
+    Return a cfg copy suitable for preview (mask keys).
+    """
+    safe = dict(cfg)
+    for k in list(safe.keys()):
+        if "key" in k.lower():
+            v = safe.get(k) or ""
+            if v:
+                safe[k] = v[:4] + "…" + v[-2:]
+    return safe
+
+
 # ---------------------
 # History helpers (NEW)
 # ---------------------

@@ -48,4 +48,5 @@ if __name__ == "__main__":
         server_port=int(os.getenv("PORT", "7860")),
         show_error=True,
         share=False,
+        debug=True
     )

@@ -1,7 +1,11 @@
 import gradio as gr
 from pathlib import Path
 import os
-from ui.callbacks import do_scan, hard_clear, on_chat, do_generate, on_use_existing, on_upload_video, on_select, toggle_provider_panels
+from ui.callbacks import do_scan, hard_clear, on_chat, do_generate, on_use_existing, on_upload_video, on_select, toggle_provider_panels, on_send_now
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 # ---------------------
 # Gradio Layout
@@ -84,8 +88,8 @@ with gr.Blocks(title="Agentic Video RAG Chat", fill_height=True) as demo:
         with gr.Column(scale=4):
             with gr.Tab("Chat"):
                 with gr.Accordion("Retrieval & Rerank", open=False):
-                    ctx_before_tb = gr.Slider(0, 6, 3, step=1, label="Context: previous chunks")
-                    ctx_after_tb = gr.Slider(0, 6, 3, step=1, label="Context: following chunks")
+                    ctx_before_tb = gr.Slider(0, 6, 1, step=1, label="Context: previous chunks")
+                    ctx_after_tb = gr.Slider(0, 6, 1, step=1, label="Context: following chunks")
                     topk_tb = gr.Slider(1, 20, 6, step=1, label="Top-K chunks")
                     method_dd = gr.Dropdown(choices=["rrf","weighted","bm25","embed"], value="rrf", label="Base retrieval")
                     alpha_tb = gr.Slider(0.0, 1.0, 0.5, step=0.05, label="Weighted α (embed weight)")
@@ -122,6 +126,18 @@ with gr.Blocks(title="Agentic Video RAG Chat", fill_height=True) as demo:
                 chat_tb = gr.Textbox(placeholder="Ask about the video…", label="Message")
                 send_btn = gr.Button("Send", variant="primary")
                 clear_btn = gr.Button("🗑️ Clear chat (hard)")
+                with gr.Accordion("Dispatch mode", open=True):
+                    dispatch_mode_dd = gr.Dropdown(
+                        choices=["Auto send", "Check before"],
+                        value="Auto send",
+                        label="LLM dispatch"
+                    )
+
+                with gr.Accordion("LLM payload preview (only in 'Check before')", open=False) as preview_section:
+                    preview_html = gr.HTML(value="", elem_id="llm_preview", visible=False)
+                    send_now_btn = gr.Button("Send to LLM now", variant="primary", visible=False)
+
+                pending_payload_state = gr.State(None)   # holds {provider, cfg, messages, temp, max_tokens, ui carry-ons}
 
             state_dict = gr.State({})
 
@@ -251,6 +267,7 @@ with gr.Blocks(title="Agentic Video RAG Chat", fill_height=True) as demo:
         enable_web, exa_api_key, exa_num_results,
         state_dict,
         source_mode,
+        dispatch_mode,
     ):
         for out in on_chat(
             user_msg, chat_history,
@@ -263,6 +280,7 @@ with gr.Blocks(title="Agentic Video RAG Chat", fill_height=True) as demo:
             enable_web, exa_api_key, exa_num_results,
             state_dict,
             source_mode,
+            dispatch_mode,
         ):
             yield out
 
@@ -279,12 +297,34 @@ with gr.Blocks(title="Agentic Video RAG Chat", fill_height=True) as demo:
             enable_web_chk, exa_key_tb, exa_num_tb,
             state_dict,
             source_mode_dd,
+            dispatch_mode_dd,
         ],
-        outputs=[chat, ts_radio, ts_map_state, ctx_panel]
+        outputs=[
+            chat,                     # messages
+            ts_radio,                 # radio
+            ts_map_state,             # label -> start
+            ctx_panel,                # context html
+            preview_html,             # NEW
+            pending_payload_state,    # NEW
+            send_now_btn,             # NEW (button visibility)
+        ]
     ).then(lambda: "", None, [chat_tb])
 
     clear_btn.click(
         hard_clear,
         inputs=None,
-        outputs=[chat, ts_radio, ts_map_state, ctx_panel, chat_tb]
+        outputs=[chat, ts_radio, ts_map_state, ctx_panel, chat_tb, preview_html, pending_payload_state]
+    )
+    send_now_btn.click(
+        on_send_now,
+        inputs=[chat, pending_payload_state],
+        outputs=[
+            chat,
+            ts_radio,
+            ts_map_state,
+            ctx_panel,
+            preview_html,
+            pending_payload_state,
+            send_now_btn,
+        ]
     )

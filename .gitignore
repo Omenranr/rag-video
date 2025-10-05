@@ -8,8 +8,8 @@
 *.srt
 /data
 /downloads
-/output
-/outputs
+*output
+*outputs
 venv
 largev3-int8
 ai_agents_video
@@ -18,3 +18,7 @@ ai_agents_video
 *dictionary*
 *.json
 *.jsonl
+*.pkl
+*.npy
+*.jsonl
+*.json

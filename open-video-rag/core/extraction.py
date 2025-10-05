@@ -1,6 +1,7 @@
 from typing import Optional, Dict
 from pathlib import Path
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ---------------------
 # Extractor / Indexer (lazy imports)
@@ -113,3 +114,86 @@ def run_visual_strategy(
     subprocess.run(cmd, check=True, cwd=str(outputs_dir))
     return {"out_dir": outputs_dir, "status": f"VLM artifacts written to {outputs_dir}"}
 
+
+def run_parallel_pipelines(
+    *,
+    want_transcript: bool,
+    want_detection: bool,
+    want_vlm: bool,
+    video_path: str,
+    out_dir: str,
+    # extractor args
+    lang, vclass, fps, device, batch, conf, iou, max_det,
+    # vlm args
+    vlm_base_url, vlm_api_key, vlm_model, vlm_profile, vlm_maxconc, vlm_stream, vlm_stream_mode,
+):
+    """
+    Run audio transcription/detections and VLM extraction in parallel (if requested).
+    Returns a dict:
+      {
+        "extractor": {"ok": bool, "error": str|None, "out_dir": str|None, "srt_path": str|None},
+        "vlm":       {"ok": bool, "error": str|None}
+      }
+    """
+
+    results = {
+        "extractor": {"ok": False, "error": None, "out_dir": None, "srt_path": None},
+        "vlm": {"ok": False, "error": None},
+    }
+
+    def _run_extractor_job():
+        # Only run if we need an SRT (transcript) or detections
+        if not (want_transcript or want_detection):
+            return None
+        out_dir_final = run_extractor(
+            video_path=video_path,
+            lang=lang, vclass=vclass,
+            fps=(None if not fps else int(fps)),
+            device=device, batch_size=int(batch),
+            conf=float(conf), iou=float(iou), max_det=int(max_det),
+            progress=None,
+            enable_detection=bool(want_detection),
+        )
+        srt = find_any_srt(str(out_dir_final))
+        return {"out_dir": out_dir_final, "srt_path": (str(srt) if srt else None)}
+
+    def _run_vlm_job():
+        if not want_vlm:
+            return None
+        run_visual_strategy(
+            video_path=video_path, outputs_dir=out_dir,
+            base_url=vlm_base_url.strip(), api_key=vlm_api_key.strip(),
+            model=vlm_model.strip(), profile=vlm_profile,
+            max_concurrency=int(vlm_maxconc),
+            stream=bool(vlm_stream), stream_mode=vlm_stream_mode,
+            force=False,
+        )
+        return {"ok": True}
+
+    # Launch in parallel when applicable
+    futures = []
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        if want_transcript or want_detection:
+            futures.append(("extractor", ex.submit(_run_extractor_job)))
+        if want_vlm:
+            futures.append(("vlm", ex.submit(_run_vlm_job)))
+
+        for label, fut in futures:
+            try:
+                val = fut.result()
+                if label == "extractor":
+                    if val is None:
+                        results["extractor"]["ok"] = True
+                    else:
+                        results["extractor"]["ok"] = True
+                        results["extractor"]["out_dir"] = val.get("out_dir")
+                        results["extractor"]["srt_path"] = val.get("srt_path")
+                else:
+                    results["vlm"]["ok"] = True
+            except Exception as e:
+                if label == "extractor":
+                    results["extractor"]["error"] = str(e)
+                else:
+                    results["vlm"]["error"] = str(e)
+
+    return results

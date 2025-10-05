@@ -1,0 +1,9 @@
+2025-10-05 11:44:38,895 INFO [video_rag] do_scan:start | {"folder": "D:\\fstt\\open-video-rag\\videos"}
+2025-10-05 11:44:38,901 INFO [video_rag] do_scan:found_videos | {"count": 9}
+2025-10-05 11:44:38,901 INFO [video_rag] do_scan:end | {}
+2025-10-05 11:44:44,264 INFO [video_rag] on_select:start | {"video": "D:\\fstt\\open-video-rag\\videos\\ELLE VIT EN SUÈDE DEPUIS 6 ANS  VOICI SON TÉMOIGNAGE  - Bruno Maltor 480p, h264, youtube.mp4", "outputs_root": "D:\\fstt\\open-video-rag\\outputs"}
+2025-10-05 11:44:44,268 INFO [video_rag] on_select:found_outputs | {"count": 1}
+2025-10-05 11:44:44,269 INFO [video_rag] on_select:end | {}
+2025-10-05 11:44:48,982 INFO [video_rag] on_select:start | {"video": "D:\\fstt\\open-video-rag\\videos\\morocco_documentary.mp4", "outputs_root": "D:\\fstt\\open-video-rag\\outputs"}
+2025-10-05 11:44:48,998 INFO [video_rag] on_select:found_outputs | {"count": 1}
+2025-10-05 11:44:48,999 INFO [video_rag] on_select:end | {}
