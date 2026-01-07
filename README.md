@@ -3,15 +3,15 @@
 
 ---
 
-# Slide 1: The Problem We're Solving
+# 1: The Problem We're Solving
 
-## 🎯 The Challenge
+## The Challenge
 
 **Traditional video editing is:**
-- ⏰ Time-consuming (hours of manual work)
-- 💰 Expensive (requires skilled editors)
-- 🔄 Repetitive (same tasks over and over)
-- 🚫 Not scalable (can't process thousands of videos)
+- Time-consuming (hours of manual work)
+- Expensive (requires skilled editors)
+- Repetitive (same tasks over and over)
+- Not scalable (can't process thousands of videos)
 
 **Example**: Blurring faces in a 10-minute video
 - Manual editing: 2-3 hours
@@ -28,9 +28,9 @@ graph LR
 
 ---
 
-# Slide 2: Our Vision
+# 2: The Vision
 
-## 💡 What If Video Editing Was As Simple As Talking?
+## What If Video Editing Was As Simple As Talking?
 
 **Instead of:**
 ```
@@ -61,9 +61,9 @@ graph LR
 
 ---
 
-# Slide 3: System Architecture - The Big Picture
+# 3: System Architecture - The Big Picture
 
-## 🏗️ Why This Architecture?
+## Why This Architecture?
 
 **Decision**: Layered, modular architecture
 **Reason**: Separation of concerns, scalability, maintainability
@@ -114,9 +114,9 @@ graph TB
 
 ---
 
-# Slide 4: The Two-Phase Approach
+# 4: The Two-Phase Approach
 
-## 🔄 Why Two Phases?
+## Why Two Phases?
 
 **Decision**: Separate analysis from processing
 **Reason**: Speed, efficiency, cost optimization
@@ -134,7 +134,7 @@ sequenceDiagram
     System->>YOLO: Analyze (background)
     Note over YOLO: Detect all objects<br/>in all frames
     YOLO->>Database: Store results
-    Database->>User: ✅ Ready for queries
+    Database->>User: Ready for queries
     
     Note over User,Database: This happens ONCE per video<br/>Results reused for ALL queries
 ```
@@ -167,9 +167,9 @@ sequenceDiagram
 
 ---
 
-# Slide 5: Why YOLOv8?
+# 5: Why YOLOv8?
 
-## 🎯 The Detection Challenge
+## The Detection Challenge
 
 **Need**: Find objects in video frames quickly
 **Solution**: YOLOv8 (You Only Look Once)
@@ -226,9 +226,9 @@ graph LR
 
 ---
 
-# Slide 6: Why SAM3?
+# 6: Why SAM3?
 
-## 🎨 The Precision Challenge
+## The Precision Challenge
 
 **Problem**: YOLO gives rectangles, we need exact shapes
 **Solution**: SAM3 (Segment Anything Model)
@@ -280,7 +280,7 @@ graph TB
 
 ---
 
-# Slide 7: The YOLO + SAM Integration
+# 7: The YOLO + SAM Integration
 
 ## 🤝 Why Combine Both Models?
 
@@ -323,9 +323,9 @@ graph TB
 
 ---
 
-# Slide 8: The Agentic Approach
+# 8: The Agentic Approach
 
-## 🤖 Why Use an AI Agent?
+## Why Use an AI Agent?
 
 **Traditional Approach**: Hard-coded if/else logic
 **Our Approach**: Intelligent agent that reasons
@@ -343,7 +343,7 @@ elif query == "blur cars":
 # What about "blur persons wearing red"? 🤔
 ```
 
-### Our Agentic Solution
+### The Agentic Solution
 
 ```mermaid
 graph TB
@@ -372,9 +372,9 @@ graph TB
 
 ---
 
-# Slide 9: LangGraph State Machine
+# 9: LangGraph State Machine
 
-## 🔄 Why LangGraph?
+## Why LangGraph?
 
 **Decision**: Use LangGraph for agent orchestration
 **Reason**: Structured, debuggable, maintainable workflows
@@ -428,9 +428,9 @@ stateDiagram-v2
 
 ---
 
-# Slide 10: MCP Protocol - The Tool Layer
+# 10: MCP Protocol - The Tool Layer
 
-## 🛠️ Why MCP (Model Context Protocol)?
+## Why MCP (Model Context Protocol)?
 
 **Decision**: Use MCP for tool integration
 **Reason**: Standardized, modular, extensible
@@ -478,9 +478,9 @@ graph TB
 
 ---
 
-# Slide 11: MCP Server Architecture
+# 11: MCP Server Architecture
 
-## 📦 How MCP Servers Work
+## How MCP Servers Work
 
 ```mermaid
 graph TB
@@ -534,9 +534,9 @@ graph LR
 
 ---
 
-# Slide 12: The Complete Workflow
+# 12: The Complete Workflow
 
-## 🎬 From Query to Result
+## From Query to Result
 
 ```mermaid
 sequenceDiagram
@@ -578,9 +578,9 @@ sequenceDiagram
 
 ---
 
-# Slide 13: Graceful Degradation
+# 13: Graceful Degradation
 
-## 🛡️ Why Design for Failure?
+## Why Design for Failure?
 
 **Decision**: System works even without GPU
 **Reason**: Reliability, accessibility, cost optimization
@@ -630,9 +630,9 @@ graph LR
 
 ---
 
-# Slide 14: Database Design
+# 14: Database Design
 
-## 💾 Why This Schema?
+## Why This Schema?
 
 **Decision**: Separate tables for videos, detections, segmentations, jobs
 **Reason**: Normalization, query efficiency, scalability
@@ -703,9 +703,9 @@ graph TB
 
 ---
 
-# Slide 15: Performance Optimization
+# 15: Performance Optimization
 
-## ⚡ How We Achieve Speed
+## How We Achieve Speed
 
 ### 1. Frame Sampling
 ```mermaid
@@ -756,9 +756,9 @@ graph LR
 
 ---
 
-# Slide 16: Scaling Strategy
+# 16: Scaling Strategy
 
-## 📈 How We Scale
+## How We Scale
 
 ```mermaid
 graph TB
@@ -812,9 +812,9 @@ graph TB
 
 ---
 
-# Slide 17: Real-World Use Cases
+# 17: Real-World Use Cases
 
-## 🎯 Why This Matters
+## Why This Matters
 
 ### Use Case 1: Privacy Protection
 ```mermaid
@@ -857,9 +857,9 @@ graph LR
 
 ---
 
-# Slide 18: Competitive Advantages
+# 18: Competitive Advantages
 
-## 🏆 Why Choose Our System?
+## Benefits of the system ?
 
 ```mermaid
 graph TB
@@ -902,7 +902,7 @@ graph TB
 
 ---
 
-# Slide 19: Technical Specifications
+# 19: Technical Specifications
 
 ## 📊 System Capabilities
 
@@ -971,7 +971,7 @@ graph TB
 
 ---
 
-# Slide 20: Future Roadmap
+# 20: Future Roadmap
 
 ## 🔮 What's Next?
 
@@ -1001,9 +1001,9 @@ graph TB
 
 ---
 
-# Slide 21: Key Takeaways
+# 21: Key Takeaways
 
-## 💡 Summary of Design Decisions
+## Summary of Design Decisions
 
 ```mermaid
 mindmap
@@ -1032,38 +1032,8 @@ mindmap
 
 ### Why This System Works
 
-1. **🎯 Right Tool for Right Job**: YOLO + SAM + Claude each excel at their task
-2. **⚡ Optimized for Speed**: Caching, batching, sampling
-3. **🛡️ Built for Reliability**: Graceful degradation, error handling
-4. **📈 Designed to Scale**: Horizontal scaling, queue-based processing
-5. **🤖 Truly Intelligent**: Agentic approach handles novel queries
-
----
-
-# Slide 22: Thank You!
-
-## 🚀 Ready to Transform Video Editing
-
-**Contact & Resources:**
-- 📧 Email: [Your Email]
-- 🐙 GitHub: [Repository URL]
-- 📚 Docs: [Documentation URL]
-- 🎬 Demo: [Demo URL]
-
-**Questions?**
-
-```mermaid
-graph LR
-    A[Your Question] --> B[Our Answer]
-    B --> C[Let's Discuss!]
-    
-    style A fill:#4a90e2
-    style B fill:#51cf66
-    style C fill:#ffd43b
-```
-
----
-
-**Presentation Version**: 1.0  
-**Date**: 2026-01-07  
-**System**: Agentic AI Video Editing
+1. ** Right Tool for Right Job**: YOLO + SAM + Claude each excel at their task
+2. ** Optimized for Speed**: Caching, batching, sampling
+3. ** Built for Reliability**: Graceful degradation, error handling
+4. ** Designed to Scale**: Horizontal scaling, queue-based processing
+5. ** Truly Intelligent**: Agentic approach handles novel queries
