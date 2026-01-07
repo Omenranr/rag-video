@@ -23,7 +23,7 @@ graph LR
     C[Our System] -->|5-10 minutes| D[Same Result]
     
     style A fill:#ff6b6b
-    style C fill:#51cf66
+    style C fill:#2ecc71
 ```
 
 ---
@@ -56,7 +56,7 @@ graph LR
     C -->|Processes| D[📹 Edited Video]
     
     style B fill:#4a90e2
-    style C fill:#51cf66
+    style C fill:#2ecc71
 ```
 
 ---
@@ -108,7 +108,7 @@ graph TB
     
     style Agent fill:#4a90e2
     style Claude fill:#e24a90
-    style YOLO fill:#51cf66
+    style YOLO fill:#2ecc71
     style SAM fill:#ff6b6b
 ```
 
@@ -201,10 +201,10 @@ graph TB
     style R2 fill:#4a90e2
     style R3 fill:#4a90e2
     style R4 fill:#4a90e2
-    style A1 fill:#51cf66
-    style A2 fill:#51cf66
-    style A3 fill:#51cf66
-    style A4 fill:#51cf66
+    style A1 fill:#2ecc71
+    style A2 fill:#2ecc71
+    style A3 fill:#2ecc71
+    style A4 fill:#2ecc71
 ```
 
 ### How YOLO Works
@@ -217,7 +217,7 @@ graph LR
     D --> E[Output<br/>Boxes + Classes]
     
     style B fill:#4a90e2
-    style C fill:#51cf66
+    style C fill:#2ecc71
     style D fill:#ff6b6b
 ```
 
@@ -254,7 +254,7 @@ graph TB
     S --> R2
     
     style Y fill:#ff6b6b
-    style S fill:#51cf66
+    style S fill:#2ecc71
 ```
 
 ### SAM3 Architecture
@@ -270,9 +270,9 @@ graph TB
     E --> F[Segmentation Mask<br/>Pixel-Perfect]
     
     style B fill:#4a90e2
-    style D fill:#51cf66
+    style D fill:#2ecc71
     style E fill:#ff6b6b
-    style F fill:#ffd43b
+    style F fill:#f39c12
 ```
 
 **Key Decision**: Use YOLO boxes as prompts for SAM3
@@ -294,10 +294,10 @@ graph LR
     C --> D[Transformation<br/>✨ Apply Effects]
     D --> E[Final Result<br/>🎬 Edited Frame]
     
-    style B fill:#51cf66
+    style B fill:#2ecc71
     style C fill:#4a90e2
     style D fill:#ff6b6b
-    style E fill:#ffd43b
+    style E fill:#f39c12
 ```
 
 ### Performance Comparison
@@ -318,7 +318,7 @@ graph TB
     
     style O1 fill:#ff6b6b
     style O2 fill:#ff6b6b
-    style O3 fill:#51cf66
+    style O3 fill:#2ecc71
 ```
 
 ---
@@ -365,7 +365,7 @@ graph TB
     
     style B fill:#e24a90
     style C fill:#4a90e2
-    style H fill:#51cf66
+    style H fill:#2ecc71
 ```
 
 **Key Benefit**: Handles complex, novel queries without new code
@@ -463,7 +463,7 @@ graph TB
     D --> H[OpenCV/FFmpeg]
     E --> I[Any New Model]
     
-    style A fill:#51cf66
+    style A fill:#2ecc71
     style B fill:#4a90e2
     style C fill:#4a90e2
     style D fill:#4a90e2
@@ -509,7 +509,7 @@ graph TB
     B -->|MCP Response| A
     
     style A fill:#4a90e2
-    style B fill:#51cf66
+    style B fill:#2ecc71
     style I fill:#ff6b6b
 ```
 
@@ -526,7 +526,7 @@ graph LR
     style A fill:#4a90e2
     style B fill:#4a90e2
     style C fill:#4a90e2
-    style D fill:#51cf66
+    style D fill:#2ecc71
 ```
 
 **Key Decision**: Each model gets its own MCP server
@@ -598,8 +598,8 @@ graph TB
     E --> G[✅ System Works]
     F --> G
     
-    style C fill:#51cf66
-    style D fill:#ffd43b
+    style C fill:#2ecc71
+    style D fill:#f39c12
     style G fill:#4a90e2
 ```
 
@@ -620,10 +620,10 @@ graph LR
     G1 --> G2
     C1 --> C2
     
-    style G1 fill:#51cf66
-    style G2 fill:#51cf66
-    style C1 fill:#ffd43b
-    style C2 fill:#ffd43b
+    style G1 fill:#2ecc71
+    style G2 fill:#2ecc71
+    style C1 fill:#f39c12
+    style C2 fill:#f39c12
 ```
 
 **Key Benefit**: System always functional, adapts to available resources
@@ -697,7 +697,7 @@ graph TB
     D --> G[✅ Fast lookups<br/>✅ Efficient filtering<br/>✅ Scalable]
     
     style B fill:#4a90e2
-    style C fill:#51cf66
+    style C fill:#2ecc71
     style D fill:#ff6b6b
 ```
 
@@ -714,8 +714,8 @@ graph LR
     B --> C[5x Faster<br/>Same quality]
     
     style A fill:#ff6b6b
-    style B fill:#51cf66
-    style C fill:#51cf66
+    style B fill:#2ecc71
+    style C fill:#2ecc71
 ```
 
 **Decision**: Process every 5th frame by default
@@ -735,7 +735,7 @@ graph TB
     end
     
     style S5 fill:#ff6b6b
-    style B2 fill:#51cf66
+    style B2 fill:#2ecc71
 ```
 
 **Decision**: Process 8 frames per batch
@@ -748,7 +748,7 @@ graph LR
     B --> C[Query 2<br/>Retrieve from DB<br/>100ms]
     
     style A fill:#ff6b6b
-    style C fill:#51cf66
+    style C fill:#2ecc71
 ```
 
 **Decision**: Cache YOLO results in database
@@ -785,9 +785,9 @@ graph TB
     W3 --> DB
     
     style LB fill:#4a90e2
-    style Queue fill:#51cf66
+    style Queue fill:#2ecc71
     style Storage fill:#ff6b6b
-    style DB fill:#ffd43b
+    style DB fill:#f39c12
 ```
 
 ### Scaling Decisions
@@ -803,7 +803,7 @@ graph TB
     D --> G[✅ Async processing<br/>✅ Load balancing<br/>✅ Fault tolerance]
     
     style B fill:#4a90e2
-    style C fill:#51cf66
+    style C fill:#2ecc71
     style D fill:#ff6b6b
 ```
 
@@ -824,7 +824,7 @@ graph LR
     
     style A fill:#ff6b6b
     style B fill:#4a90e2
-    style C fill:#51cf66
+    style C fill:#2ecc71
 ```
 
 **Impact**: GDPR compliance, protect identities, safe sharing
@@ -837,7 +837,7 @@ graph LR
     
     style A fill:#ff6b6b
     style B fill:#4a90e2
-    style C fill:#51cf66
+    style C fill:#2ecc71
 ```
 
 **Impact**: Automated moderation, reduced manual review, faster processing
@@ -850,7 +850,7 @@ graph LR
     
     style A fill:#ff6b6b
     style B fill:#4a90e2
-    style C fill:#51cf66
+    style C fill:#2ecc71
 ```
 
 **Impact**: Legal compliance, witness protection, selective anonymization
@@ -885,19 +885,19 @@ graph TB
         A4[⚠️ High costs]
     end
     
-    style O1 fill:#51cf66
-    style O2 fill:#51cf66
-    style O3 fill:#51cf66
-    style O4 fill:#51cf66
-    style O5 fill:#51cf66
+    style O1 fill:#2ecc71
+    style O2 fill:#2ecc71
+    style O3 fill:#2ecc71
+    style O4 fill:#2ecc71
+    style O5 fill:#2ecc71
     style M1 fill:#ff6b6b
     style M2 fill:#ff6b6b
     style M3 fill:#ff6b6b
     style M4 fill:#ff6b6b
-    style A1 fill:#ffd43b
-    style A2 fill:#ffd43b
-    style A3 fill:#ffd43b
-    style A4 fill:#ffd43b
+    style A1 fill:#f39c12
+    style A2 fill:#f39c12
+    style A3 fill:#f39c12
+    style A4 fill:#f39c12
 ```
 
 ---
@@ -927,8 +927,8 @@ graph LR
     P2 --> O
     
     style P1 fill:#4a90e2
-    style P2 fill:#51cf66
-    style O fill:#ffd43b
+    style P2 fill:#2ecc71
+    style O fill:#f39c12
 ```
 
 ### Model Specifications
@@ -955,10 +955,10 @@ graph TB
         C4[Cost: $3/$15 per 1M tokens]
     end
     
-    style Y1 fill:#51cf66
-    style Y2 fill:#51cf66
-    style Y3 fill:#51cf66
-    style Y4 fill:#51cf66
+    style Y1 fill:#2ecc71
+    style Y2 fill:#2ecc71
+    style Y3 fill:#2ecc71
+    style Y4 fill:#2ecc71
     style S1 fill:#4a90e2
     style S2 fill:#4a90e2
     style S3 fill:#4a90e2
@@ -994,8 +994,8 @@ graph TB
     D --> D3[AR/VR Integration<br/>Immersive editing]
     
     style A fill:#4a90e2
-    style B fill:#51cf66
-    style C fill:#ffd43b
+    style B fill:#2ecc71
+    style C fill:#f39c12
     style D fill:#ff6b6b
 ```
 
