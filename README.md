@@ -994,9 +994,9 @@ graph TB
     D --> D3[AR/VR Integration<br/>Immersive editing]
     
     style A fill:#4a90e2
-    style B fill:#2ecc71
-    style C fill:#f39c12
-    style D fill:#ff6b6b
+    style B fill:#4a90e2
+    style C fill:#4a90e2
+    style D fill:#4a90e2
 ```
 
 ---
