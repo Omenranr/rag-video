@@ -8,10 +8,10 @@
 ## The Challenge
 
 **Traditional video editing is:**
-- Time-consuming (hours of manual work)
-- Expensive (requires skilled editors)
-- Repetitive (same tasks over and over)
-- Not scalable (can't process thousands of videos)
+- ⏰ Time-consuming (hours of manual work)
+- 💰 Expensive (requires skilled editors)
+- 🔄 Repetitive (same tasks over and over)
+- 🚫 Not scalable (can't process thousands of videos)
 
 **Example**: Blurring faces in a 10-minute video
 - Manual editing: 2-3 hours
@@ -70,26 +70,26 @@ graph LR
 
 ```mermaid
 graph TB
-    subgraph "🎨 Presentation Layer"
+    subgraph "Presentation Layer"
         UI[Next.js Frontend<br/>Why: Modern, fast, great UX]
     end
     
-    subgraph "🚪 API Layer"
+    subgraph "API Layer"
         API[FastAPI Gateway<br/>Why: Fast, async, auto-docs]
     end
     
-    subgraph "🧠 Intelligence Layer"
+    subgraph "Intelligence Layer"
         Agent[LangGraph Agent<br/>Why: Orchestrates complex workflows]
         Claude[Claude 3.5 Sonnet<br/>Why: Best reasoning capabilities]
     end
     
-    subgraph "🛠️ Tool Layer"
+    subgraph "Tool Layer"
         YOLO[YOLO Server<br/>Why: Fast detection]
         SAM[SAM Server<br/>Why: Precise segmentation]
         Video[Video Server<br/>Why: Transformations]
     end
     
-    subgraph "💾 Data Layer"
+    subgraph "Data Layer"
         DB[(PostgreSQL<br/>Why: Reliable, ACID)]
         Storage[S3/MinIO<br/>Why: Scalable storage]
         Cache[(Redis<br/>Why: Fast caching)]
@@ -134,7 +134,7 @@ sequenceDiagram
     System->>YOLO: Analyze (background)
     Note over YOLO: Detect all objects<br/>in all frames
     YOLO->>Database: Store results
-    Database->>User: Ready for queries
+    Database->>User: ✅ Ready for queries
     
     Note over User,Database: This happens ONCE per video<br/>Results reused for ALL queries
 ```
@@ -144,7 +144,7 @@ sequenceDiagram
 - ✅ User doesn't wait for analysis
 - ✅ Queries are instant (data already in DB)
 
-### Phase 2: Hot Process (Query Execution)
+### 2: Hot Process (Query Execution)
 ```mermaid
 sequenceDiagram
     participant User
@@ -282,7 +282,7 @@ graph TB
 
 # 7: The YOLO + SAM Integration
 
-## 🤝 Why Combine Both Models?
+## Why Combine Both Models?
 
 **Decision**: Use YOLO for detection, SAM for segmentation
 **Reason**: Each model excels at different tasks
@@ -449,7 +449,7 @@ graph TB
     note[Tightly coupled<br/>Hard to maintain<br/>Difficult to extend]
 ```
 
-### Our Solution With MCP
+### The Solution With MCP
 
 ```mermaid
 graph TB
@@ -758,7 +758,7 @@ graph LR
 
 # 16: Scaling Strategy
 
-## How We Scale
+## 📈 How We Scale
 
 ```mermaid
 graph TB
@@ -859,7 +859,7 @@ graph LR
 
 # 18: Competitive Advantages
 
-## Benefits of the system ?
+## Benefits of this System?
 
 ```mermaid
 graph TB
@@ -904,7 +904,7 @@ graph TB
 
 # 19: Technical Specifications
 
-## 📊 System Capabilities
+## System Capabilities
 
 ### Processing Performance
 ```mermaid
@@ -973,7 +973,7 @@ graph TB
 
 # 20: Future Roadmap
 
-## 🔮 What's Next?
+## What's Next?
 
 ```mermaid
 graph TB
@@ -1003,7 +1003,7 @@ graph TB
 
 # 21: Key Takeaways
 
-## Summary of Design Decisions
+## 💡 Summary of Design Decisions
 
 ```mermaid
 mindmap
@@ -1032,8 +1032,8 @@ mindmap
 
 ### Why This System Works
 
-1. ** Right Tool for Right Job**: YOLO + SAM + Claude each excel at their task
-2. ** Optimized for Speed**: Caching, batching, sampling
-3. ** Built for Reliability**: Graceful degradation, error handling
-4. ** Designed to Scale**: Horizontal scaling, queue-based processing
-5. ** Truly Intelligent**: Agentic approach handles novel queries
+1. **🎯 Right Tool for Right Job**: YOLO + SAM + Claude each excel at their task
+2. **⚡ Optimized for Speed**: Caching, batching, sampling
+3. **🛡️ Built for Reliability**: Graceful degradation, error handling
+4. **📈 Designed to Scale**: Horizontal scaling, queue-based processing
+5. **🤖 Truly Intelligent**: Agentic approach handles novel queries
